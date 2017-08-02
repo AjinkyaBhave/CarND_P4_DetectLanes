@@ -46,8 +46,8 @@ def find_lane_pixels(img_bin, visualise=False):
         win_rightx_low = rightx_current - margin
         win_rightx_high = rightx_current + margin
         # Draw the windows on the visualization image
-        cv2.rectangle(out_img,(win_leftx_low,win_y_low),(win_leftx_high,win_y_high),(0,255,0), 3)
-        cv2.rectangle(out_img,(win_rightx_low,win_y_low),(win_rightx_high,win_y_high),(0,255,0), 3)
+        cv2.rectangle(out_img,(win_leftx_low,win_y_low),(win_leftx_high,win_y_high),(0,255,0), 2)
+        cv2.rectangle(out_img,(win_rightx_low,win_y_low),(win_rightx_high,win_y_high),(0,255,0), 2)
         # Identify the nonzero pixels in x and y within the window
         good_left_inds = ((nonzeroy >= win_y_low) & (nonzeroy < win_y_high) & (nonzerox >= win_leftx_low) & (nonzerox < win_leftx_high)).nonzero()[0]
         good_right_inds = ((nonzeroy >= win_y_low) & (nonzeroy < win_y_high) & (nonzerox >= win_rightx_low) & (nonzerox < win_rightx_high)).nonzero()[0]
