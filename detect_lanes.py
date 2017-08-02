@@ -5,9 +5,12 @@ import matplotlib.pyplot as plt
 def find_lane_pixels(img_bin, visualise=False):
     # img_bin is the projected thresholded binary image from camera
     # Take a histogram of the bottom half of the image
-    histogram = np.sum(img_bin[img_bin.shape[0]/2:,:], axis=0)
+    histogram = np.sum(img_bin[img_bin.shape[0]//2:,:], axis=0)
+    plt.plot(np.arange(0,img_bin.shape[1]), histogram)
+    plt.show()
     # Create an output image to draw on and  visualize the result
-    out_img = np.dstack((img_bin, img_bin, img_bin))*255
+    # Image type needs to be uint8 to enable drawing of rectangles and points using imshow
+    out_img = (np.dstack((img_bin, img_bin, img_bin))*255).astype(np.uint8)
     # Find the peak of the left and right halves of the histogram
     # These will be the starting point for the left and right lines
     midpoint = np.int(histogram.shape[0]/2)
@@ -15,9 +18,9 @@ def find_lane_pixels(img_bin, visualise=False):
     rightx_base = np.argmax(histogram[midpoint:]) + midpoint
 
     # Choose the number of sliding windows
-    nwindows = 9
+    n_win = 9
     # Set height of windows
-    window_height = np.int(img_bin.shape[0]/nwindows)
+    win_height = np.int(img_bin.shape[0]/n_win)
     # Identify the x and y positions of all nonzero pixels in the image
     nonzero = img_bin.nonzero()
     nonzeroy = np.array(nonzero[0])
@@ -34,20 +37,20 @@ def find_lane_pixels(img_bin, visualise=False):
     right_lane_inds = []
 
     # Step through the windows one by one
-    for window in range(nwindows):
+    for win in range(n_win):
         # Identify window boundaries in x and y (and right and left)
-        win_y_low = img_bin.shape[0] - (window+1)*window_height
-        win_y_high = img_bin.shape[0] - window*window_height
-        win_xleft_low = leftx_current - margin
-        win_xleft_high = leftx_current + margin
-        win_xright_low = rightx_current - margin
-        win_xright_high = rightx_current + margin
+        win_y_low       = img_bin.shape[0] - (win+1)*win_height
+        win_y_high      = img_bin.shape[0] - win*win_height
+        win_leftx_low  = leftx_current - margin
+        win_leftx_high  = leftx_current + margin
+        win_rightx_low = rightx_current - margin
+        win_rightx_high = rightx_current + margin
         # Draw the windows on the visualization image
-        cv2.rectangle(out_img,(win_xleft_low,win_y_low),(win_xleft_high,win_y_high),(0,255,0), 2)
-        cv2.rectangle(out_img,(win_xright_low,win_y_low),(win_xright_high,win_y_high),(0,255,0), 2)
+        cv2.rectangle(out_img,(win_leftx_low,win_y_low),(win_leftx_high,win_y_high),(0,255,0), 3)
+        cv2.rectangle(out_img,(win_rightx_low,win_y_low),(win_rightx_high,win_y_high),(0,255,0), 3)
         # Identify the nonzero pixels in x and y within the window
-        good_left_inds = ((nonzeroy >= win_y_low) & (nonzeroy < win_y_high) & (nonzerox >= win_xleft_low) & (nonzerox < win_xleft_high)).nonzero()[0]
-        good_right_inds = ((nonzeroy >= win_y_low) & (nonzeroy < win_y_high) & (nonzerox >= win_xright_low) & (nonzerox < win_xright_high)).nonzero()[0]
+        good_left_inds = ((nonzeroy >= win_y_low) & (nonzeroy < win_y_high) & (nonzerox >= win_leftx_low) & (nonzerox < win_leftx_high)).nonzero()[0]
+        good_right_inds = ((nonzeroy >= win_y_low) & (nonzeroy < win_y_high) & (nonzerox >= win_rightx_low) & (nonzerox < win_rightx_high)).nonzero()[0]
         # Append these indices to the lists
         left_lane_inds.append(good_left_inds)
         right_lane_inds.append(good_right_inds)
@@ -70,3 +73,17 @@ def find_lane_pixels(img_bin, visualise=False):
     # Fit a second order polynomial to each
     left_fit = np.polyfit(lefty, leftx, 2)
     right_fit = np.polyfit(righty, rightx, 2)
+
+    if visualise:
+        # Generate x and y values for plotting
+        ploty = np.linspace(0, img_bin.shape[0] - 1, img_bin.shape[0])
+        left_fitx = left_fit[0] * ploty ** 2 + left_fit[1] * ploty + left_fit[2]
+        right_fitx = right_fit[0] * ploty ** 2 + right_fit[1] * ploty + right_fit[2]
+        out_img[nonzeroy[left_lane_inds], nonzerox[left_lane_inds]] = [255, 0, 0]
+        out_img[nonzeroy[right_lane_inds], nonzerox[right_lane_inds]] = [0, 0, 255]
+        plt.imshow(out_img)
+        plt.plot(left_fitx, ploty, color='yellow')
+        plt.plot(right_fitx, ploty, color='yellow')
+        plt.xlim(0, 1280)
+        plt.ylim(720, 0)
+        plt.show()

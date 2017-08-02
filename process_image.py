@@ -109,7 +109,7 @@ def undistort_image(img, mtx, dist, visualise=False):
         plt.show()
     return img_undist
 
-def view_road_top(img, img_bin, visualise=False):
+def view_road_top(img_bin, img=None, visualise=False):
     # Source points are chosen to form a quadrangle on lane lines in the bottom half of image
     top_left  = [570, 470]
     top_right = [720, 470]
@@ -123,20 +123,21 @@ def view_road_top(img, img_bin, visualise=False):
     top_left  = [322, 1]
     top_right = [918, 1]
     dst_pts = np.array([bottom_left, bottom_right, top_right, top_left], dtype=np.float32)
-    img_size = (img_bin.shape[1], img_bin.shape[0])
 
+    img_size = (img_bin.shape[1], img_bin.shape[0])
     M = cv2.getPerspectiveTransform(src_pts, dst_pts)
     img_top = cv2.warpPerspective(img_bin, M, img_size, flags=cv2.INTER_LINEAR)
 
     if visualise:
+        img_top_vis = np.copy(img_top)
         # Plot original and projected image to check validity of transforrm
         cv2.polylines(img, np.array([src_pts],dtype=np.int32),True,(255,0,0), 5)
-        cv2.polylines(img_top,np.array([dst_pts], dtype=np.int32),True,(0,0,255), 5)
+        cv2.polylines(img_top_vis, np.array([dst_pts], dtype=np.int32),True,(0,0,255), 5)
         f, (ax1, ax2) = plt.subplots(1, 2, figsize=(24, 9))
         f.tight_layout()
         ax1.imshow(img)
         ax1.set_title('Original Image', fontsize=50)
-        ax2.imshow(img_top, cmap='gray')
+        ax2.imshow(img_top_vis, cmap='gray')
         ax2.set_title('Projected Image', fontsize=50)
         plt.subplots_adjust(left=0., right=1, top=0.9, bottom=0.)
         plt.show()
