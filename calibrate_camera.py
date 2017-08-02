@@ -7,7 +7,7 @@ import pickle
 # This code is taken from the Udacity camera calibration notebook
 # https://github.com/udacity/CarND-Camera-Calibration
 
-def calibrate_camera(img_path="camera_cal/calibration*.jpg", params_path = "camera_cal/camera_params.p"):
+def calibrate_camera(img_path='camera_cal/calibration*.jpg', params_path = 'camera_params.p'):
     nx = 9  # enter the number of inside corners in  x
     ny = 6  # enter the number of inside corners in y
     # prepare object points, like (0,0,0), (1,0,0), (2,0,0) ....,(8,5,0)
@@ -38,8 +38,6 @@ def calibrate_camera(img_path="camera_cal/calibration*.jpg", params_path = "came
             #write_name = 'corners_found'+str(idx)+'.jpg'
             #cv2.imwrite(img_dir+write_name, img)
 
-    #cv2.destroyAllWindows()
-
     img_size = (img.shape[1], img.shape[0])
     # Do camera calibration given object points and image points
     ret, mtx, dist, rvecs, tvecs = cv2.calibrateCamera(objpoints, imgpoints, img_size, None, None)
@@ -47,12 +45,12 @@ def calibrate_camera(img_path="camera_cal/calibration*.jpg", params_path = "came
 
     # Save the camera calibration result for later use
     camera_params = {}
-    camera_params["intrinsic"] = mtx
-    camera_params["distortion"] = dist
-    pickle.dump( camera_params, open( params_path, "wb" ) )
-    print("Camera parameters saved")
+    camera_params['intrinsic'] = mtx
+    camera_params['distortion'] = dist
+    pickle.dump(camera_params, open(params_path, 'wb'))
+    print('Camera parameters saved')
 
-def test_camera(img_path="camera_cal/calibration2.jpg", params_file='./camera_cal/camera_params.p'):
+def test_camera(img_path='camera_cal/calibration2.jpg', params_file='camera_params.p'):
     with open(params_file, mode='rb') as f:
         params = pickle.load(f)
     mtx = params['intrinsic']
