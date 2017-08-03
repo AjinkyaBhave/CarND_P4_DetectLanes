@@ -6,8 +6,6 @@ def fit_lanes(img_bin, visualise=False):
     # img_bin is the projected thresholded binary image from camera
     # Take a histogram of the bottom half of the image
     histogram = np.sum(img_bin[img_bin.shape[0]//2:,:], axis=0)
-    plt.plot(np.arange(0,img_bin.shape[1]), histogram)
-    plt.show()
     # Create an output image to draw on and  visualize the result
     # Image type needs to be uint8 to enable drawing of rectangles and points using imshow
     out_img = (np.dstack((img_bin, img_bin, img_bin))*255).astype(np.uint8)
@@ -76,6 +74,10 @@ def fit_lanes(img_bin, visualise=False):
     right_fit = np.polyfit(righty, rightx, 2)
 
     if visualise:
+        # Plot histogram of the bottom half of the image
+        plt.plot(np.arange(0, img_bin.shape[1]), histogram)
+        plt.show()
+
         # Generate x and y values for plotting
         y_fit = np.linspace(0, img_bin.shape[0] - 1, img_bin.shape[0])
         leftx_fit = left_fit[0] * y_fit ** 2 + left_fit[1] * y_fit + left_fit[2]

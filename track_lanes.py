@@ -1,6 +1,7 @@
 import numpy as np
 import pickle
 import glob
+from collections import deque
 from functools import reduce
 import matplotlib.image as mpimg
 from moviepy.editor import VideoFileClip
@@ -23,11 +24,11 @@ mtx  = params['intrinsic']
 dist = params['distortion']
 
 # Number of past images to store for lane detection
-n_steps = 10
+n_frames = 10
 img_height = 720
 img_width = 1280
 img_channels = 3
-img_buffer = np.zeros((n_steps, img_height, img_width, img_channels), dtype=np.uint8)
+img_buffer = np.zeros((n_frames, img_height, img_width, img_channels), dtype=np.uint8)
 
 # Define a class to receive the characteristics of each line detection
 class Lane():
@@ -53,7 +54,7 @@ class Lane():
         #y values for detected line pixels
         self.ally = None
 
-def draw_lanes(img_undist, img_top, left_fit, right_fit):
+def draw_lanes(img_undist, img_top, left_fit, right_fit, visualise=False):
     # Generate x and y values for plotting
     y_fit = np.linspace(0, img_top.shape[0] - 1, img_top.shape[0])
     leftx_fit = left_fit[0] * y_fit ** 2 + left_fit[1] * y_fit + left_fit[2]
@@ -76,36 +77,52 @@ def draw_lanes(img_undist, img_top, left_fit, right_fit):
     # Warp the blank back to original image space using inverse perspective matrix (Minv)
     newwarp = cv2.warpPerspective(color_warp, Minv, (color_warp.shape[1], color_warp.shape[0]))
     # Combine the result with the original image
-    result = cv2.addWeighted(img_undist, 1, newwarp, 0.3, 0)
-    plt.imshow(result)
-    plt.show()
+    img_out = cv2.addWeighted(img_undist, 1, newwarp, 0.3, 0)
+    if visualise:
+        plt.imshow(img_out)
+        plt.show()
+    return img_out
 
 # Pipeline to process camera image to isolate lane markings
-def pipeline(img_max, img, visualise = False):
+def pipeline(img_max, img, visualise=False):
     img_undist = undistort_image(img_max, mtx=mtx, dist=dist, visualise=visualise)
     img_thresh = threshold_image(img_undist, visualise=visualise)
     img_top = view_road_top(img_thresh, img_max, visualise=visualise)
     left_fit, right_fit = fit_lanes(img_top, visualise=visualise)
-    draw_lanes(img, img_top, left_fit, right_fit)
+    img_out = draw_lanes(img, img_top, left_fit, right_fit, visualise=visualise)
+    return img_out
 
+def track_lanes(img):
+    # Add newest camera frame from right end of queue
+    img_queue.append(img)
+    # If queue has enough images to begin processing
+    if len(img_queue) == n_frames:
+        img_max = reduce(np.maximum, np.asarray(img_queue))
+        #plt.imshow(img_max)
+        #plt.show()
+        img_out = pipeline(img_max, img)
+        # Remove oldest camera frame from left end of queue
+        img_queue.popleft()
+        return img_out
+    else:
+        return img
+
+# Contains history of last n_frames camera images
+img_queue = deque()
 # Video is at 25 FPS
-'''clip = VideoFileClip(video_input).subclip(0,2)
-video_times = np.linspace(0, 1, n_steps)
+clip = VideoFileClip(video_input)
+clip_output = clip.fl_image(track_lanes) #NOTE: this function expects color images!!
+clip_output.write_videofile(video_output, audio=False)
+
+'''video_times = np.linspace(0, 5, 5*n_frames)
 for vt in video_times:
-        video_img_file = video_img_dir + 'video{}.jpg'.format(vt)
+        video_img_file = video_img_dir + 'video{:3.2}.jpg'.format(vt)
         clip.save_frame(video_img_file, vt)
-#clip_output = clip.fl_image(pipeline) #NOTE: this function expects color images!!
-#clip_output.write_videofile(video_output, audio=False)
-'''
 
 # Make a list of calibration images
-images = glob.glob(video_img_dir+'video*.jpg')
-i=0
-for image in images:
-    img = mpimg.imread(image)
-    img_buffer[i] = img
-    i+=1
-img_max = reduce(np.maximum, img_buffer)
-plt.imshow(img_max)
-plt.show()
-pipeline(img_max, img_buffer[len(images)-1])
+img_files = glob.glob(video_img_dir+'video*.jpg')
+for img_file in img_files:
+    img = mpimg.imread(img_file)
+    track_lanes(img)
+    #print(len(img_queue))
+'''
