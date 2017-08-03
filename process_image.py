@@ -2,6 +2,20 @@ import numpy as np
 import cv2
 import matplotlib.pyplot as plt
 
+# Source points are chosen to form a quadrangle on lane lines in the bottom half of image
+top_left  = [570, 470]
+top_right = [720, 470]
+bottom_right = [1130, 720]
+bottom_left  = [200, 720]
+src_pts = np.array([bottom_left, bottom_right, top_right, top_left], dtype=np.float32)
+
+# Destination points are chosen such that straight lanes appear more or less parallel in the transformed image.
+bottom_left  = [320, 720]
+bottom_right = [920, 720]
+top_left  = [322, 1]
+top_right = [918, 1]
+dst_pts = np.array([bottom_left, bottom_right, top_right, top_left], dtype=np.float32)
+
 def sobel_thresh(img, orient='x', sobel_kernel=3, thresh=(100, 255)):
     # Convert to grayscale
     gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
@@ -110,19 +124,6 @@ def undistort_image(img, mtx, dist, visualise=False):
     return img_undist
 
 def view_road_top(img_bin, img=None, visualise=False):
-    # Source points are chosen to form a quadrangle on lane lines in the bottom half of image
-    top_left  = [570, 470]
-    top_right = [720, 470]
-    bottom_right = [1130, 720]
-    bottom_left  = [200, 720]
-    src_pts = np.array([bottom_left, bottom_right, top_right, top_left], dtype=np.float32)
-
-    # Destination points are chosen such that straight lanes appear more or less parallel in the transformed image.
-    bottom_left  = [320, 720]
-    bottom_right = [920, 720]
-    top_left  = [322, 1]
-    top_right = [918, 1]
-    dst_pts = np.array([bottom_left, bottom_right, top_right, top_left], dtype=np.float32)
 
     img_size = (img_bin.shape[1], img_bin.shape[0])
     M = cv2.getPerspectiveTransform(src_pts, dst_pts)
