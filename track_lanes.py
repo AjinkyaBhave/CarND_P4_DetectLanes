@@ -1,6 +1,7 @@
 import numpy as np
 import pickle
 import glob
+import os
 from collections import deque
 from functools import reduce
 import matplotlib.image as mpimg
@@ -10,8 +11,8 @@ from detect_lanes import *
 
 # File and directory paths
 params_file   = 'camera_params.p'
-video_input    = 'project_video.mp4'
-video_output  = 'project_video_output.mp4'
+video_input   = 'challenge_video.mp4'
+video_output  = 'challenge_video_output.mp4'
 img_dir       = 'test_images/'
 img_file      = 'straight_lines1.jpg'
 video_img_dir =  img_dir+'project_video/'
@@ -23,36 +24,14 @@ with open(params_file, mode='rb') as f:
 mtx  = params['intrinsic']
 dist = params['distortion']
 
-# Number of past images to store for lane detection
-n_frames = 10
+# Number of past camera images to store for smoothing
+n_prev_frames = 10
+# Parameters of vehicle camera images
 img_height = 720
 img_width = 1280
 img_channels = 3
-img_buffer = np.zeros((n_frames, img_height, img_width, img_channels), dtype=np.uint8)
-
-# Define a class to receive the characteristics of each line detection
-class Lane():
-    def __init__(self):
-        # was the line detected in the last iteration?
-        self.detected = False
-        # x values of the last n fits of the line
-        self.recent_xfitted = []
-        #average x values of the fitted line over the last n iterations
-        self.bestx = None
-        #polynomial coefficients averaged over the last n iterations
-        self.best_fit = None
-        #polynomial coefficients for the most recent fit
-        self.current_fit = [np.array([False])]
-        #radius of curvature of the line in some units
-        self.radius_of_curvature = None
-        #distance in meters of vehicle center from the line
-        self.line_base_pos = None
-        #difference in fit coefficients between last and new fits
-        self.diffs = np.array([0,0,0], dtype='float')
-        #x values for detected line pixels
-        self.allx = None
-        #y values for detected line pixels
-        self.ally = None
+# Contains history of last n_prev_frames camera images
+img_queue = deque(maxlen=n_prev_frames)
 
 def draw_lanes(img_undist, img_top, left_fit, right_fit, visualise=False):
     # Generate x and y values for plotting
@@ -88,7 +67,7 @@ def pipeline(img_max, img, visualise=False):
     img_undist = undistort_image(img_max, mtx=mtx, dist=dist, visualise=visualise)
     img_thresh = threshold_image(img_undist, visualise=visualise)
     img_top = view_road_top(img_thresh, img_max, visualise=visualise)
-    left_fit, right_fit = fit_lanes(img_top, visualise=visualise)
+    left_fit, right_fit = fit_lane(img_top, visualise=visualise)
     img_out = draw_lanes(img, img_top, left_fit, right_fit, visualise=visualise)
     return img_out
 
@@ -96,7 +75,7 @@ def track_lanes(img):
     # Add newest camera frame from right end of queue
     img_queue.append(img)
     # If queue has enough images to begin processing
-    if len(img_queue) == n_frames:
+    if len(img_queue) == n_prev_frames:
         img_max = reduce(np.maximum, np.asarray(img_queue))
         #plt.imshow(img_max)
         #plt.show()
@@ -107,22 +86,29 @@ def track_lanes(img):
     else:
         return img
 
-# Contains history of last n_frames camera images
-img_queue = deque()
-# Video is at 25 FPS
-clip = VideoFileClip(video_input)
-clip_output = clip.fl_image(track_lanes) #NOTE: this function expects color images!!
-clip_output.write_videofile(video_output, audio=False)
+if __name__ == '__main__':
 
-'''video_times = np.linspace(0, 5, 5*n_frames)
-for vt in video_times:
-        video_img_file = video_img_dir + 'video{:3.2}.jpg'.format(vt)
-        clip.save_frame(video_img_file, vt)
+    # Run on video file if true else run on test images
+    TEST_ON_VIDEO = 1
 
-# Make a list of calibration images
-img_files = glob.glob(video_img_dir+'video*.jpg')
-for img_file in img_files:
-    img = mpimg.imread(img_file)
-    track_lanes(img)
-    #print(len(img_queue))
-'''
+    if TEST_ON_VIDEO:
+        # Video is at 25 FPS
+        clip = VideoFileClip(video_input)
+        clip_output = clip.fl_image(track_lanes) #NOTE: this function expects color images!!
+        clip_output.write_videofile(video_output, audio=False)
+
+    else:
+        if not os.listdir(video_img_dir):
+            v_start = 0
+            v_end   = 1
+            video_times = np.linspace(v_start, v_end, n_prev_frames+1)
+            clip = VideoFileClip(video_input).subclip(v_start, v_end)
+            for vt in video_times:
+                video_img_file = video_img_dir + 'video{:3.2}.jpg'.format(vt)
+                clip.save_frame(video_img_file, vt)
+
+        # Read camera frames from disk
+        img_files = glob.glob(video_img_dir+'video*.jpg')
+        for img_file in img_files:
+            img = mpimg.imread(img_file)
+            track_lanes(img)
