@@ -32,14 +32,17 @@ right_line = Line()
 
 # Set the width of the windows +/- margin
 margin = 100
+# Define conversions in x and y from pixels space to meters
+ym_per_pix = 30/720 # meters per pixel in y dimension
+xm_per_pix = 3.7/700 # meters per pixel in x dimension
 
 def sliding_window(img_bin, nonzerox, nonzeroy, visualise=False):
     # Set minimum number of pixels found to recenter window
     minpix = 50
 
     # Create empty lists to receive left and right lane pixel indices
-    left_lane_idx = []
-    right_lane_idx = []
+    left_line_idx = []
+    right_line_idx = []
 
     # Create an output image to draw on and  visualize the result
     # Image type needs to be uint8 to enable drawing of rectangles and points using cv2
@@ -69,36 +72,36 @@ def sliding_window(img_bin, nonzerox, nonzeroy, visualise=False):
         win_rightx_low = rightx_current - margin
         win_rightx_high = rightx_current + margin
         # Identify the nonzero pixels in x and y within the window
-        good_left_inds = ((nonzeroy >= win_y_low) & (nonzeroy < win_y_high) & (nonzerox >= win_leftx_low) & (
-        nonzerox < win_leftx_high)).nonzero()[0]
-        good_right_inds = ((nonzeroy >= win_y_low) & (nonzeroy < win_y_high) & (nonzerox >= win_rightx_low) & (
-        nonzerox < win_rightx_high)).nonzero()[0]
+        good_left_idx = ((nonzeroy >= win_y_low) & (nonzeroy < win_y_high) & (nonzerox >= win_leftx_low) & (
+                           nonzerox < win_leftx_high)).nonzero()[0]
+        good_right_idx = ((nonzeroy >= win_y_low) & (nonzeroy < win_y_high) & (nonzerox >= win_rightx_low) & (
+                            nonzerox < win_rightx_high)).nonzero()[0]
         # Append these indices to the lists
-        left_lane_idx.append(good_left_inds)
-        right_lane_idx.append(good_right_inds)
+        left_line_idx.append(good_left_idx)
+        right_line_idx.append(good_right_idx)
         # If you found > minpix pixels, recenter next window on their mean position
-        if len(good_left_inds) > minpix:
-            leftx_current = np.int(np.mean(nonzerox[good_left_inds]))
-        if len(good_right_inds) > minpix:
-            rightx_current = np.int(np.mean(nonzerox[good_right_inds]))
+        if len(good_left_idx) > minpix:
+            leftx_current = np.int(np.mean(nonzerox[good_left_idx]))
+        if len(good_right_idx) > minpix:
+            rightx_current = np.int(np.mean(nonzerox[good_right_idx]))
         if visualise:
             # Draw the windows on the visualization image
             cv2.rectangle(img_out, (win_leftx_low, win_y_low), (win_leftx_high, win_y_high), (0, 255, 0), 2)
             cv2.rectangle(img_out, (win_rightx_low, win_y_low), (win_rightx_high, win_y_high), (0, 255, 0), 2)
 
     # Concatenate the arrays of indices
-    left_lane_idx = np.concatenate(left_lane_idx)
-    right_lane_idx = np.concatenate(right_lane_idx)
+    left_line_idx = np.concatenate(left_line_idx)
+    right_line_idx = np.concatenate(right_line_idx)
 
     if visualise:
         # Plot histogram of the bottom half of the image
         plt.plot(np.arange(0, img_bin.shape[1]), histogram)
         plt.show()
         # Draw left and right lines pixels on output image
-        img_out[nonzeroy[left_lane_idx], nonzerox[left_lane_idx]] = [255, 0, 0]
-        img_out[nonzeroy[right_lane_idx], nonzerox[right_lane_idx]] = [0, 0, 255]
+        img_out[nonzeroy[left_line_idx], nonzerox[left_line_idx]] = [255, 0, 0]
+        img_out[nonzeroy[right_line_idx], nonzerox[right_line_idx]] = [0, 0, 255]
 
-    return left_lane_idx, right_lane_idx, img_out
+    return left_line_idx, right_line_idx, img_out
 
 def fit_lane(img_bin, visualise=False):
     # img_bin is the projected thresholded binary image from camera
@@ -106,45 +109,56 @@ def fit_lane(img_bin, visualise=False):
     nonzero = img_bin.nonzero()
     nonzeroy = np.array(nonzero[0])
     nonzerox = np.array(nonzero[1])
-    if (left_line.detected!=True) & (right_line.detected != True):
-        left_lane_idx, right_lane_idx, img_out = sliding_window(img_bin, nonzerox, nonzeroy, visualise=visualise)
-    else:
-        left_lane_idx = (
-        (nonzerox > (left_fit[0] * (nonzeroy ** 2) + left_fit[1] * nonzeroy + left_fit[2] - margin)) & (
-            nonzerox < (left_fit[0] * (nonzeroy ** 2) + left_fit[1] * nonzeroy + left_fit[2] + margin)))
-        right_lane_idx = (
-        (nonzerox > (right_fit[0] * (nonzeroy ** 2) + right_fit[1] * nonzeroy + right_fit[2] - margin)) & (
-            nonzerox < (right_fit[0] * (nonzeroy ** 2) + right_fit[1] * nonzeroy + right_fit[2] + margin)))
-    # Extract left and right line pixel positions
-    leftx = nonzerox[left_lane_idx]
-    lefty = nonzeroy[left_lane_idx]
-    rightx = nonzerox[right_lane_idx]
-    righty = nonzeroy[right_lane_idx]
-    # Fit a second order polynomial to each
-    left_fit = np.polyfit(lefty, leftx, 2)
-    right_fit = np.polyfit(righty, rightx, 2)
 
+    # Start sliding window search if either left or right lines were not detected in previous frame
+    if (not left_line.detected) or (not right_line.detected):
+        left_line_idx, right_line_idx, img_out = sliding_window(img_bin, nonzerox, nonzeroy, visualise=visualise)
+    else:
+    # Otherwise start focused search around most recent left and right lines detected
+        left_line_idx = ((nonzerox > (left_line.current_fit[0] * (nonzeroy ** 2) + left_line.current_fit[1] * nonzeroy + left_line.current_fit[2] - margin)) & (
+                          nonzerox < (left_line.current_fit[0] * (nonzeroy ** 2) + left_line.current_fit[1] * nonzeroy + left_line.current_fit[2] + margin)))
+        right_line_idx = ((nonzerox > (right_line.current_fit[0] * (nonzeroy ** 2) + right_line.current_fit[1] * nonzeroy + right_line.current_fit[2] - margin)) & (
+                           nonzerox < (right_line.current_fit[0] * (nonzeroy ** 2) + right_line.current_fit[1] * nonzeroy + right_line.current_fit[2] + margin)))
+
+    # Extract left and right line pixel positions
+    leftx = nonzerox[left_line_idx]
+    lefty = nonzeroy[left_line_idx]
+    rightx = nonzerox[right_line_idx]
+    righty = nonzeroy[right_line_idx]
+
+    if (leftx is None) or (lefty is None):
+        left_fit = left_line.best_fit
+        left_line.detected = False
+    else:
+        # Fit a second order polynomial to each
+        left_fit = np.polyfit(lefty, leftx, 2)
+
+    if (rightx is None) or (righty is None):
+        right_line.detected = False
+        right_fit = right_line.best_fit
+
+    else:
+        # Right line pixels are detected accurately
+        right_line.detected = True
+        # Fit a second order polynomial to each
+        right_fit = np.polyfit(righty, rightx, 2)
+
+    # Calculate lane curvature
+    left_line.radius_of_curvature, right_line.radius_of_curvature = find_curvature()
     if visualise:
         plot_lanes(img_out, left_fit, right_fit)
     return left_fit, right_fit
 
-def fit_next_lanes(img_bin, left_fit, right_fit):
-    # Search for lanes in new frame based on where the last valid lanes were detected
-    nonzero = img_bin.nonzero()
-    nonzeroy = np.array(nonzero[0])
-    nonzerox = np.array(nonzero[1])
-    margin = 100
+def find_curvature():
+    # Fit new polynomials to x,y in world space
+    left_fit_cr = np.polyfit(ploty * ym_per_pix, leftx * xm_per_pix, 2)
+    right_fit_cr = np.polyfit(ploty * ym_per_pix, rightx * xm_per_pix, 2)
+    # Calculate the new radii of curvature
+    left_curverad = ((1 + (2 * left_fit_cr[0] * y_eval * ym_per_pix + left_fit_cr[1]) ** 2) ** 1.5) / np.absolute(
+                      2 * left_fit_cr[0])
+    right_curverad = ((1 + (2 * right_fit_cr[0] * y_eval * ym_per_pix + right_fit_cr[1]) ** 2) ** 1.5) / np.absolute(
+                       2 * right_fit_cr[0])
 
-    # Extract left and right line pixel positions
-    leftx = nonzerox[left_lane_idx]
-    lefty = nonzeroy[left_lane_idx]
-    rightx = nonzerox[right_lane_idx]
-    righty = nonzeroy[right_lane_idx]
-    # Fit a second order polynomial to each
-    left_fit = np.polyfit(lefty, leftx, 2)
-    right_fit = np.polyfit(righty, rightx, 2)
-
-    return left_fit, right_fit
 
 def plot_lanes(img_out, left_fit, right_fit):
     # Create an image to draw on and an image to show the selection window

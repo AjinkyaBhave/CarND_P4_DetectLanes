@@ -90,6 +90,9 @@ if __name__ == '__main__':
 
     # Run on video file if true else run on test images
     TEST_ON_VIDEO = 1
+    # No lane lines are detected at start of driving
+    left_line.detected = False
+    right_line.detected = False
 
     if TEST_ON_VIDEO:
         # Video is at 25 FPS
