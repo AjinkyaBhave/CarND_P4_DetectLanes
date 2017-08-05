@@ -62,13 +62,14 @@ def draw_lanes(img_undist, img_top, left_fit, right_fit, visualise=False):
     return img_out
 
 # Pipeline to process camera image to isolate lane markings
-def pipeline(img_max, img, visualise=True):
+def image_pipeline(img_max, img, visualise=False):
     img_undist = undistort_image(img_max, mtx=mtx, dist=dist, visualise=visualise)
     img_thresh = threshold_image(img_undist, visualise=visualise)
+    #img_thresh = hist_image(img_undist, visualise=True)
     img_top = view_road_top(img_thresh, img_max, visualise=visualise)
-    left_fit, right_fit = fit_lane(img_top, visualise=True)
+    left_fit, right_fit = fit_lane(img_top, visualise=visualise)
     #print(left_fit, right_fit)
-    img_out = draw_lanes(img, img_top, left_fit, right_fit, visualise=True)
+    img_out = draw_lanes(img, img_top, left_fit, right_fit, visualise=visualise)
     return img_out
 
 def track_lanes(img):
@@ -79,7 +80,7 @@ def track_lanes(img):
         img_max = reduce(np.maximum, np.asarray(img_queue))
         #plt.imshow(img_max)
         #plt.show()
-        img_out = pipeline(img_max, img)
+        img_out = image_pipeline(img_max, img)
         # Remove oldest camera frame from left end of queue
         img_queue.popleft()
         return img_out
@@ -96,10 +97,9 @@ if __name__ == '__main__':
 
     if TEST_ON_VIDEO:
         # Video is at 25 FPS
-        clip = VideoFileClip(video_input).subclip(0,2)
+        clip = VideoFileClip(video_input)
         clip_output = clip.fl_image(track_lanes) #NOTE: this function expects color images!!
         clip_output.write_videofile(video_output, audio=False)
-
     else:
         if not os.listdir(video_img_dir):
             v_start = 0
