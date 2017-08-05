@@ -11,8 +11,8 @@ from detect_lanes import *
 
 # File and directory paths
 params_file   = 'camera_params.p'
-video_input   = 'project_video.mp4'
-video_output  = 'project_video_output.mp4'
+video_input   = 'challenge_video.mp4'
+video_output  = 'challenge_video_output.mp4'
 img_dir       = 'test_images/'
 img_file      = 'straight_lines1.jpg'
 video_img_dir =  img_dir+'project_video/'
@@ -26,50 +26,49 @@ dist = params['distortion']
 
 # Number of past camera images to store for smoothing
 n_prev_frames = 10
-# Parameters of vehicle camera images
-img_height = 720
-img_width = 1280
-img_channels = 3
 # Contains history of last n_prev_frames camera images
 img_queue = deque(maxlen=n_prev_frames)
 
 def draw_lanes(img_undist, img_top, left_fit, right_fit, visualise=False):
-    # Generate x and y values for plotting
-    y_fit = np.linspace(0, img_top.shape[0] - 1, img_top.shape[0])
-    leftx_fit = left_fit[0] * y_fit ** 2 + left_fit[1] * y_fit + left_fit[2]
-    rightx_fit = right_fit[0] * y_fit ** 2 + right_fit[1] * y_fit + right_fit[2]
-
     # Create an image to draw the lines on
     warp_zero = np.zeros_like(img_top).astype(np.uint8)
     color_warp = np.dstack((warp_zero, warp_zero, warp_zero))
+    img_out = np.copy(img_undist)
 
-    # Recast the x and y points into usable format for cv2.fillPoly()
-    pts_left = np.array([np.transpose(np.vstack([leftx_fit, y_fit]))])
-    pts_right = np.array([np.flipud(np.transpose(np.vstack([rightx_fit, y_fit])))])
-    pts = np.hstack((pts_left, pts_right))
+    if (len(left_fit) == (left_line.fit_degree + 1)) and (len(right_fit) == (right_line.fit_degree + 1)):
+        # Generate x and y values for plotting
+        y_fit = np.linspace(0, img_top.shape[0] - 1, img_top.shape[0])
+        leftx_fit = left_fit[0] * y_fit ** 2 + left_fit[1] * y_fit + left_fit[2]
+        rightx_fit = right_fit[0] * y_fit ** 2 + right_fit[1] * y_fit + right_fit[2]
 
-    # Draw the lane onto the warped blank image
-    cv2.fillPoly(color_warp, np.int_([pts]), (0, 255, 0))
+        # Recast the x and y points into usable format for cv2.fillPoly()
+        pts_left = np.array([np.transpose(np.vstack([leftx_fit, y_fit]))])
+        pts_right = np.array([np.flipud(np.transpose(np.vstack([rightx_fit, y_fit])))])
+        pts = np.hstack((pts_left, pts_right))
 
-    # Calculate inverse homography using source and destination pixels
-    Minv = cv2.getPerspectiveTransform(dst_pts, src_pts)
-    # Warp the blank back to original image space using inverse perspective matrix (Minv)
-    newwarp = cv2.warpPerspective(color_warp, Minv, (color_warp.shape[1], color_warp.shape[0]))
-    # Combine the result with the original image
-    img_out = cv2.addWeighted(img_undist, 1, newwarp, 0.3, 0)
+        # Draw the lane onto the warped blank image
+        cv2.fillPoly(color_warp, np.int_([pts]), (0, 255, 0))
+
+        # Calculate inverse homography using source and destination pixels
+        Minv = cv2.getPerspectiveTransform(dst_pts, src_pts)
+        # Warp the blank back to original image space using inverse perspective matrix (Minv)
+        newwarp = cv2.warpPerspective(color_warp, Minv, (color_warp.shape[1], color_warp.shape[0]))
+        # Combine the result with the original image
+        img_out = cv2.addWeighted(img_undist, 1, newwarp, 0.3, 0)
     if visualise:
         plt.imshow(img_out)
         plt.show()
+
     return img_out
 
 # Pipeline to process camera image to isolate lane markings
-def pipeline(img_max, img, visualise=False):
+def pipeline(img_max, img, visualise=True):
     img_undist = undistort_image(img_max, mtx=mtx, dist=dist, visualise=visualise)
     img_thresh = threshold_image(img_undist, visualise=visualise)
     img_top = view_road_top(img_thresh, img_max, visualise=visualise)
-    left_fit, right_fit = fit_lane(img_top, visualise=visualise)
+    left_fit, right_fit = fit_lane(img_top, visualise=True)
     #print(left_fit, right_fit)
-    img_out = draw_lanes(img, img_top, left_fit, right_fit, visualise=visualise)
+    img_out = draw_lanes(img, img_top, left_fit, right_fit, visualise=True)
     return img_out
 
 def track_lanes(img):
@@ -97,7 +96,7 @@ if __name__ == '__main__':
 
     if TEST_ON_VIDEO:
         # Video is at 25 FPS
-        clip = VideoFileClip(video_input)
+        clip = VideoFileClip(video_input).subclip(0,2)
         clip_output = clip.fl_image(track_lanes) #NOTE: this function expects color images!!
         clip_output.write_videofile(video_output, audio=False)
 

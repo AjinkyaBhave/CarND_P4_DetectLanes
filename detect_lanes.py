@@ -8,6 +8,8 @@ class Line():
     def __init__(self):
         # was the line detected in the last iteration?
         self.detected = False
+        # Degree of polynomial for line fit
+        self.fit_degree = 2
         # Number of iterations for filtering calculations
         self.n_fit = 5
         # x values of the last n_fit of the line
@@ -26,12 +28,10 @@ class Line():
         self.allx = None
         # y values for detected line pixels
         self.ally = None
-        # Degree of polynomial for line fit
-        self.fit_degree = 2
         # radius of curvature of the line in metres
-        self.radius_of_curvature = None
+        self.radius = None
         # distance of vehicle center from the centre of lane in meters
-        self.line_base_pos = None
+        self.centre_offset = None
 
 # Objects containing attributes for left and right ego-lane lines
 left_line  = Line()
@@ -43,18 +43,18 @@ margin = 100
 xm_per_pix = 3.7/700
 # Metres per pixel in y dimension
 ym_per_pix = 30/720
+# Parameters of vehicle camera images
+img_height = 720
+img_width = 1280
+img_channels = 3
 
-def sliding_window(img_bin, nonzerox, nonzeroy, visualise=False):
+def sliding_window(img_bin, img_out, nonzerox, nonzeroy, visualise=False):
     # Set minimum number of pixels found to recenter window
     minpix = 50
 
     # Create empty lists to receive left and right lane pixel indices
     left_line_idx = []
     right_line_idx = []
-
-    # Create an output image to draw on and  visualize the result
-    # Image type needs to be uint8 to enable drawing of rectangles and points using cv2
-    img_out = (np.dstack((img_bin, img_bin, img_bin)) * 255).astype(np.uint8)
 
     # Take a histogram of the bottom half of the image
     histogram = np.sum(img_bin[img_bin.shape[0] // 2:, :], axis=0)
@@ -109,10 +109,14 @@ def sliding_window(img_bin, nonzerox, nonzeroy, visualise=False):
         img_out[nonzeroy[left_line_idx], nonzerox[left_line_idx]] = [255, 0, 0]
         img_out[nonzeroy[right_line_idx], nonzerox[right_line_idx]] = [0, 0, 255]
 
-    return left_line_idx, right_line_idx, img_out
+    return left_line_idx, right_line_idx
 
 def fit_lane(img_bin, visualise=False):
     # img_bin is the projected thresholded binary image from camera
+    # Create an output image to draw on and  visualize the result
+    # Image type needs to be uint8 to enable drawing of rectangles and points using cv2
+    img_out = (np.dstack((img_bin, img_bin, img_bin)) * 255).astype(np.uint8)
+
     # Identify the x and y positions of all nonzero pixels in the image
     nonzero = img_bin.nonzero()
     nonzeroy = np.array(nonzero[0])
@@ -120,9 +124,9 @@ def fit_lane(img_bin, visualise=False):
 
     # Start sliding window search if either left or right lines were not detected in previous frame
     if (not left_line.detected) or (not right_line.detected):
-        left_line_idx, right_line_idx, img_out = sliding_window(img_bin, nonzerox, nonzeroy, visualise=visualise)
+        left_line_idx, right_line_idx = sliding_window(img_bin, img_out, nonzerox, nonzeroy, visualise=visualise)
     else:
-    # Otherwise start focused search around most recent left and right lines detected
+        # Otherwise start focused search around most recent left and right lines detected
         left_line_idx = ((nonzerox > (left_line.current_fit[0] * (nonzeroy ** 2) + left_line.current_fit[1] * nonzeroy + left_line.current_fit[2] - margin)) & (
                           nonzerox < (left_line.current_fit[0] * (nonzeroy ** 2) + left_line.current_fit[1] * nonzeroy + left_line.current_fit[2] + margin)))
         right_line_idx = ((nonzerox > (right_line.current_fit[0] * (nonzeroy ** 2) + right_line.current_fit[1] * nonzeroy + right_line.current_fit[2] - margin)) & (
@@ -146,90 +150,122 @@ def fit_lane(img_bin, visualise=False):
         ## Calculate goodness of fit here...
         ##
         # Calculate left line radius
-        left_rad, _ = find_curvature(img_bin, 'left')
-        # Calculate best fit to line
+        left_rad, _ = find_curvature(lefty, leftx, 'left')
+        # Calculate average fit to line
         if len(left_line.recent_fit) == left_line.n_fit:
             left_line.avg_fit = np.sum(np.asarray(left_line.recent_fit), axis=0)/left_line.n_fit
-            left_line.recent_fit.pop(0)
+            left_line.recent_fit.popleft()
         # Add current fit to end of list
         left_line.recent_fit.append(left_fit)
-
         # Save attributes of left lane object for current image
         left_line.allx = leftx
         left_line.ally = lefty
         left_line.diffs = left_line.current_fit - left_fit
         left_line.current_fit = left_fit
-        left_line.radius_of_curvature = left_rad
+        left_line.radius = left_rad
 
     # If pixels of right line not detected in current image
     if (rightx.size == 0) or (righty.size == 0):
         # Use previous best fit as current fit
         right_line.detected = False
-
     else:
         # Right line pixels are detected accurately
         right_line.detected = True
         # Fit a second order polynomial to detected right line pixels
         right_fit = np.polyfit(righty, rightx, right_line.fit_degree)
-        # Calculate left line radius
-        _, right_rad = find_curvature(img_bin, 'right')
+        ## Calculate goodness of fit here...
+        ##
+        # Calculate right line radius
+        _, right_rad = find_curvature(righty, rightx,  'right')
+        # Calculate average fit to line
+        if len(right_line.recent_fit) == right_line.n_fit:
+            right_line.avg_fit = np.sum(np.asarray(right_line.recent_fit), axis=0)/right_line.n_fit
+            right_line.recent_fit.popleft()
+        # Add current fit to end of list
+        right_line.recent_fit.append(right_fit)
         # Save attributes of right line object for current image
         right_line.allx = rightx
         right_line.ally = righty
         right_line.diffs = right_line.current_fit - right_fit
         right_line.current_fit = right_fit
-        right_line.radius_of_curvature = right_rad
+        right_line.radius = right_rad
+
+    if left_line.detected and right_line.detected:
+        centre_offset = find_offset()
+        left_line.centre_offset = centre_offset
+        right_line.centre_offset = centre_offset
 
     if visualise:
+        print('Radius: ', left_line.radius, right_line.radius)
+        print('Centre Offset: ', left_line.centre_offset)
         plot_lanes(img_out, left_line.current_fit, right_line.current_fit)
 
     return left_line.current_fit, right_line.current_fit
 
-def find_curvature(img_bin, lane_line):
-    # Y-coordinates to calculate radius over
-    y_fit = np.linspace(0, img_bin.shape[0]-1, img_bin.shape[0])
+def find_curvature(liney, linex, lane_line):
     # Y-coordinate of point to calculate the curvature at
-    y_eval = int(img_bin.shape[0]/2)
+    y_eval = int(img_height/2)
     # Fit new polynomials to x,y in world space
     left_rad  = -1
     right_rad = -1
     if lane_line == 'left':
-        left_fit_wc  = np.polyfit(y_fit * ym_per_pix, left_line.allx * xm_per_pix, left_line.fit_degree)
+        left_fit_wc  = np.polyfit(liney * ym_per_pix, linex * xm_per_pix, left_line.fit_degree)
         # Calculate the new radii of curvature
         left_rad = ((1 + (2 * left_fit_wc[0] * y_eval * ym_per_pix + left_fit_wc[1]) ** 2) ** 1.5) \
                      / np.absolute(2 * left_fit_wc[0])
     if lane_line == 'right':
-        right_fit_wc = np.polyfit(y_fit * ym_per_pix, right_line.allx * xm_per_pix, right_line.fit_degree)
+        right_fit_wc = np.polyfit(linex * ym_per_pix, linex * xm_per_pix, right_line.fit_degree)
         right_rad = ((1 + (2 * right_fit_wc[0] * y_eval * ym_per_pix + right_fit_wc[1]) ** 2) ** 1.5) \
                      / np.absolute(2 * right_fit_wc[0])
     return left_rad, right_rad
 
+def find_offset():
+    y_base = img_height - 1
+    # Calculate x coordinate of base of left and right lines
+    leftx_base = left_line.current_fit[0] * (y_base) ** 2 + left_line.current_fit[1] * y_base + left_line.current_fit[2]
+    rightx_base = right_line.current_fit[0] * (y_base) ** 2 + right_line.current_fit[1] * y_base + \
+                  right_line.current_fit[2]
+    # Calculate x coordinate of centre of lane
+    midx_base = int((rightx_base - leftx_base) / 2) + leftx_base
+    centre_offset = (midx_base - int(img_width / 2)) * xm_per_pix
+    return centre_offset
+
+
 def plot_lanes(img_out, left_fit, right_fit):
     # Create an image to draw on and an image to show the selection window
     window_img = np.zeros_like(img_out)
-
     # Generate x and y values for plotting
     y_fit = np.linspace(0, img_out.shape[0]-1, img_out.shape[0])
-    leftx_fit = left_fit[0] * y_fit ** 2 + left_fit[1] * y_fit + left_fit[2]
-    rightx_fit = right_fit[0] * y_fit ** 2 + right_fit[1] * y_fit + right_fit[2]
+    if len(left_fit) == (left_line.fit_degree+1):
+        leftx_fit = left_fit[0] * y_fit ** 2 + left_fit[1] * y_fit + left_fit[2]
+        # Generate a polygon to illustrate the search window area
+        # And recast the x and y points into usable format for cv2.fillPoly()
+        left_line_window1 = np.array([np.transpose(np.vstack([leftx_fit - margin, y_fit]))])
+        left_line_window2 = np.array([np.flipud(np.transpose(np.vstack([leftx_fit + margin, y_fit])))])
+        left_line_pts = np.hstack((left_line_window1, left_line_window2))
+        # Draw the lane onto the warped blank image
+        cv2.fillPoly(window_img, np.int_([left_line_pts]), (0, 255, 0))
+        # Draw left line pixels on output image
+        img_out[left_line.ally, left_line.allx] = [255, 0, 0]
+        # Draw lane lines based on current fit
+        plt.plot(leftx_fit, y_fit, color='yellow')
 
-    # Generate a polygon to illustrate the search window area
-    # And recast the x and y points into usable format for cv2.fillPoly()
-    left_line_window1 = np.array([np.transpose(np.vstack([leftx_fit - margin, y_fit]))])
-    left_line_window2 = np.array([np.flipud(np.transpose(np.vstack([leftx_fit + margin, y_fit])))])
-    left_line_pts = np.hstack((left_line_window1, left_line_window2))
-    right_line_window1 = np.array([np.transpose(np.vstack([rightx_fit - margin, y_fit]))])
-    right_line_window2 = np.array([np.flipud(np.transpose(np.vstack([rightx_fit + margin, y_fit])))])
-    right_line_pts = np.hstack((right_line_window1, right_line_window2))
+    if len(right_fit) == (right_line.fit_degree+1):
+        rightx_fit = right_fit[0] * y_fit ** 2 + right_fit[1] * y_fit + right_fit[2]
+        # Generate a polygon to illustrate the search window area
+        # And recast the x and y points into usable format for cv2.fillPoly()
+        right_line_window1 = np.array([np.transpose(np.vstack([rightx_fit - margin, y_fit]))])
+        right_line_window2 = np.array([np.flipud(np.transpose(np.vstack([rightx_fit + margin, y_fit])))])
+        right_line_pts = np.hstack((right_line_window1, right_line_window2))
+        # Draw the lane onto the warped blank image
+        cv2.fillPoly(window_img, np.int_([right_line_pts]), (0, 255, 0))
+        # Draw right line pixels on output image
+        img_out[right_line.ally, right_line.allx] = [0, 0, 255]
+        # Draw lane lines based on current fit
+        plt.plot(rightx_fit, y_fit, color='yellow')
 
-    # Draw the lane onto the warped blank image
-    cv2.fillPoly(window_img, np.int_([left_line_pts]), (0, 255, 0))
-    cv2.fillPoly(window_img, np.int_([right_line_pts]), (0, 255, 0))
     result = cv2.addWeighted(img_out, 1, window_img, 0.3, 0)
     plt.imshow(result)
-    # Draw lane lines based on current fit
-    plt.plot(leftx_fit, y_fit, color='yellow')
-    plt.plot(rightx_fit, y_fit, color='yellow')
     plt.xlim(0, img_out.shape[1])
     plt.ylim(img_out.shape[0], 0)
     plt.show()
