@@ -11,8 +11,8 @@ from detect_lanes import *
 
 # File and directory paths
 params_file   = 'camera_params.p'
-video_input   = 'challenge_video.mp4'
-video_output  = 'challenge_video_output.mp4'
+video_input   = 'project_video.mp4'
+video_output  = 'project_video_output.mp4'
 img_dir       = 'test_images/'
 img_file      = 'straight_lines1.jpg'
 video_img_dir =  img_dir+'project_video/'
@@ -68,6 +68,7 @@ def pipeline(img_max, img, visualise=False):
     img_thresh = threshold_image(img_undist, visualise=visualise)
     img_top = view_road_top(img_thresh, img_max, visualise=visualise)
     left_fit, right_fit = fit_lane(img_top, visualise=visualise)
+    #print(left_fit, right_fit)
     img_out = draw_lanes(img, img_top, left_fit, right_fit, visualise=visualise)
     return img_out
 

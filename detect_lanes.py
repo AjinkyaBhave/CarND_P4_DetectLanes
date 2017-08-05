@@ -1,30 +1,37 @@
 import numpy as np
 import cv2
+from collections import deque
 import matplotlib.pyplot as plt
 
-# Define a class to receive the characteristics of each line detection
+# Define a class to store the attributes of each line detection
 class Line():
     def __init__(self):
         # was the line detected in the last iteration?
         self.detected = False
-        # x values of the last n fits of the line
-        self.recent_xfitted = []
-        #average x values of the fitted line over the last n iterations
-        self.bestx = None
-        #polynomial coefficients averaged over the last n iterations
-        self.best_fit = None
-        #polynomial coefficients for the most recent fit
+        # Number of iterations for filtering calculations
+        self.n_fit = 5
+        # x values of the last n_fit of the line
+        self.recentx = deque(maxlen=self.n_fit)
+        # x values of the fitted line averaged over the last n_fit iterations
+        self.avgx = None
+        # polynomial coefficients of the last n_fit of the line
+        self.recent_fit = deque(maxlen=self.n_fit)
+        # polynomial coefficients averaged over the last n iterations
+        self.avg_fit = None
+        # polynomial coefficients for the most recent fit
         self.current_fit = [np.array([False])]
-        #radius of curvature of the line in some units
-        self.radius_of_curvature = None
-        #distance in meters of vehicle center from the line
-        self.line_base_pos = None
-        #difference in fit coefficients between last and new fits
-        self.diffs = np.array([0,0,0], dtype='float')
-        #x values for detected line pixels
+        # difference in fit coefficients between last and new fits
+        self.diffs = np.zeros(self.fit_degree+1, dtype='float')
+        # x values for detected line pixels
         self.allx = None
-        #y values for detected line pixels
+        # y values for detected line pixels
         self.ally = None
+        # Degree of polynomial for line fit
+        self.fit_degree = 2
+        # radius of curvature of the line in metres
+        self.radius_of_curvature = None
+        # distance of vehicle center from the centre of lane in meters
+        self.line_base_pos = None
 
 # Objects containing attributes for left and right ego-lane lines
 left_line  = Line()
@@ -32,9 +39,10 @@ right_line = Line()
 
 # Set the width of the windows +/- margin
 margin = 100
-# Define conversions in x and y from pixels space to meters
-ym_per_pix = 30/720 # meters per pixel in y dimension
-xm_per_pix = 3.7/700 # meters per pixel in x dimension
+# Metres per pixel in x dimension
+xm_per_pix = 3.7/700
+# Metres per pixel in y dimension
+ym_per_pix = 30/720
 
 def sliding_window(img_bin, nonzerox, nonzeroy, visualise=False):
     # Set minimum number of pixels found to recenter window
@@ -126,46 +134,82 @@ def fit_lane(img_bin, visualise=False):
     rightx = nonzerox[right_line_idx]
     righty = nonzeroy[right_line_idx]
 
-    if (leftx is None) or (lefty is None):
-        left_fit = left_line.best_fit
+    # If pixels of left line not detected in current image
+    if (leftx.size == 0) or (lefty.size == 0):
+        # Use previous best fit as current fit
         left_line.detected = False
     else:
-        # Fit a second order polynomial to each
-        left_fit = np.polyfit(lefty, leftx, 2)
+        # Left line pixels are detected accurately
+        left_line.detected = True
+        # Fit a second order polynomial to detected left line pixels
+        left_fit = np.polyfit(lefty, leftx, left_line.fit_degree)
+        ## Calculate goodness of fit here...
+        ##
+        # Calculate left line radius
+        left_rad, _ = find_curvature(img_bin, 'left')
+        # Calculate best fit to line
+        if len(left_line.recent_fit) == left_line.n_fit:
+            left_line.avg_fit = np.sum(np.asarray(left_line.recent_fit), axis=0)/left_line.n_fit
+            left_line.recent_fit.pop(0)
+        # Add current fit to end of list
+        left_line.recent_fit.append(left_fit)
 
-    if (rightx is None) or (righty is None):
+        # Save attributes of left lane object for current image
+        left_line.allx = leftx
+        left_line.ally = lefty
+        left_line.diffs = left_line.current_fit - left_fit
+        left_line.current_fit = left_fit
+        left_line.radius_of_curvature = left_rad
+
+    # If pixels of right line not detected in current image
+    if (rightx.size == 0) or (righty.size == 0):
+        # Use previous best fit as current fit
         right_line.detected = False
-        right_fit = right_line.best_fit
 
     else:
         # Right line pixels are detected accurately
         right_line.detected = True
-        # Fit a second order polynomial to each
-        right_fit = np.polyfit(righty, rightx, 2)
+        # Fit a second order polynomial to detected right line pixels
+        right_fit = np.polyfit(righty, rightx, right_line.fit_degree)
+        # Calculate left line radius
+        _, right_rad = find_curvature(img_bin, 'right')
+        # Save attributes of right line object for current image
+        right_line.allx = rightx
+        right_line.ally = righty
+        right_line.diffs = right_line.current_fit - right_fit
+        right_line.current_fit = right_fit
+        right_line.radius_of_curvature = right_rad
 
-    # Calculate lane curvature
-    left_line.radius_of_curvature, right_line.radius_of_curvature = find_curvature()
     if visualise:
-        plot_lanes(img_out, left_fit, right_fit)
-    return left_fit, right_fit
+        plot_lanes(img_out, left_line.current_fit, right_line.current_fit)
 
-def find_curvature():
+    return left_line.current_fit, right_line.current_fit
+
+def find_curvature(img_bin, lane_line):
+    # Y-coordinates to calculate radius over
+    y_fit = np.linspace(0, img_bin.shape[0]-1, img_bin.shape[0])
+    # Y-coordinate of point to calculate the curvature at
+    y_eval = int(img_bin.shape[0]/2)
     # Fit new polynomials to x,y in world space
-    left_fit_cr = np.polyfit(ploty * ym_per_pix, leftx * xm_per_pix, 2)
-    right_fit_cr = np.polyfit(ploty * ym_per_pix, rightx * xm_per_pix, 2)
-    # Calculate the new radii of curvature
-    left_curverad = ((1 + (2 * left_fit_cr[0] * y_eval * ym_per_pix + left_fit_cr[1]) ** 2) ** 1.5) / np.absolute(
-                      2 * left_fit_cr[0])
-    right_curverad = ((1 + (2 * right_fit_cr[0] * y_eval * ym_per_pix + right_fit_cr[1]) ** 2) ** 1.5) / np.absolute(
-                       2 * right_fit_cr[0])
-
+    left_rad  = -1
+    right_rad = -1
+    if lane_line == 'left':
+        left_fit_wc  = np.polyfit(y_fit * ym_per_pix, left_line.allx * xm_per_pix, left_line.fit_degree)
+        # Calculate the new radii of curvature
+        left_rad = ((1 + (2 * left_fit_wc[0] * y_eval * ym_per_pix + left_fit_wc[1]) ** 2) ** 1.5) \
+                     / np.absolute(2 * left_fit_wc[0])
+    if lane_line == 'right':
+        right_fit_wc = np.polyfit(y_fit * ym_per_pix, right_line.allx * xm_per_pix, right_line.fit_degree)
+        right_rad = ((1 + (2 * right_fit_wc[0] * y_eval * ym_per_pix + right_fit_wc[1]) ** 2) ** 1.5) \
+                     / np.absolute(2 * right_fit_wc[0])
+    return left_rad, right_rad
 
 def plot_lanes(img_out, left_fit, right_fit):
     # Create an image to draw on and an image to show the selection window
     window_img = np.zeros_like(img_out)
 
     # Generate x and y values for plotting
-    y_fit = np.linspace(0, img_out.shape[0] - 1, img_out.shape[0])
+    y_fit = np.linspace(0, img_out.shape[0]-1, img_out.shape[0])
     leftx_fit = left_fit[0] * y_fit ** 2 + left_fit[1] * y_fit + left_fit[2]
     rightx_fit = right_fit[0] * y_fit ** 2 + right_fit[1] * y_fit + right_fit[2]
 
