@@ -11,8 +11,8 @@ from detect_lanes import *
 
 # File and directory paths
 params_file   = 'camera_params.p'
-video_input   = 'challenge_video.mp4'
-video_output  = 'challenge_video_output.mp4'
+video_input   = 'project_video.mp4'
+video_output  = 'project_video_output.mp4'
 img_dir       = 'test_images/'
 img_file      = 'straight_lines1.jpg'
 video_img_dir =  img_dir+'project_video/'
@@ -55,20 +55,22 @@ def draw_lanes(img_undist, img_top, left_fit, right_fit, visualise=False):
         newwarp = cv2.warpPerspective(color_warp, Minv, (color_warp.shape[1], color_warp.shape[0]))
         # Combine the result with the original image
         img_out = cv2.addWeighted(img_undist, 1, newwarp, 0.3, 0)
-    if visualise:
-        plt.imshow(img_out)
-        plt.show()
+        text_str = 'Left Radius: {0:.2f} m '.format(left_line.radius) + 'Right Radius: {0:.2f} m '.format(right_line.radius)\
+                   + 'Offset: {0:.2f} m '.format(left_line.centre_offset)
+        cv2.putText(img_out, text_str, (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+
+        if visualise:
+            plt.imshow(img_out)
+            plt.show()
 
     return img_out
 
 # Pipeline to process camera image to isolate lane markings
 def image_pipeline(img_max, img, visualise=False):
-    img_undist = undistort_image(img_max, mtx=mtx, dist=dist, visualise=visualise)
+    img_undist = undistort_image(img_max, mtx=mtx, dist=dist, visualise=False)
     img_thresh = threshold_image(img_undist, visualise=visualise)
-    #img_thresh = hist_image(img_undist, visualise=True)
     img_top = view_road_top(img_thresh, img_max, visualise=visualise)
     left_fit, right_fit = fit_lane(img_top, visualise=visualise)
-    #print(left_fit, right_fit)
     img_out = draw_lanes(img, img_top, left_fit, right_fit, visualise=visualise)
     return img_out
 
@@ -97,7 +99,7 @@ if __name__ == '__main__':
 
     if TEST_ON_VIDEO:
         # Video is at 25 FPS
-        clip = VideoFileClip(video_input)
+        clip = VideoFileClip(video_input).subclip(0,2)
         clip_output = clip.fl_image(track_lanes) #NOTE: this function expects color images!!
         clip_output.write_videofile(video_output, audio=False)
     else:

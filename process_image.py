@@ -1,6 +1,7 @@
 import numpy as np
 import cv2
 import matplotlib.pyplot as plt
+from scipy.stats import norm
 
 # Source points are chosen to form a quadrangle on lane lines in the bottom half of image
 top_left  = [570, 470]
@@ -12,11 +13,11 @@ src_pts = np.array([bottom_left, bottom_right, top_right, top_left], dtype=np.fl
 # Destination points are chosen such that straight lanes appear more or less parallel in the transformed image
 bottom_left  = [320, 720]
 bottom_right = [920, 720]
-top_left  = [322, 1]
+top_left  = [328, 1]
 top_right = [918, 1]
 dst_pts = np.array([bottom_left, bottom_right, top_right, top_left], dtype=np.float32)
 
-def sobel_thresh(img, orient='x', sobel_kernel=3, thresh=(100, 255)):
+def sobel_thresh(img, orient='x', sobel_kernel=3, thresh=(150, 255)):
     # Convert to grayscale
     gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
     # Take the gradient in x and y separately
@@ -36,21 +37,6 @@ def sobel_thresh(img, orient='x', sobel_kernel=3, thresh=(100, 255)):
     sobel_bin[(scaled_sobel >= thresh[0]) & (scaled_sobel <= thresh[1])] = 1
     return sobel_bin
 
-def mag_thresh(img, sobel_kernel=3, thresh=(120, 255)):
-    # Convert to grayscale
-    gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
-    # Take the gradient in x and y separately
-    sobelx = cv2.Sobel(gray, cv2.CV_64F, 1, 0, ksize=sobel_kernel)
-    sobely = cv2.Sobel(gray, cv2.CV_64F, 0, 1, ksize=sobel_kernel)
-    # Calculate the gradient magnitude
-    grad_mag = np.sqrt(np.square(sobelx) + np.square(sobely))
-    # Scale to 8-bit (0 - 255) and convert to type = np.uint8
-    scaled_grad_mag = np.uint8(255 * grad_mag / np.max(grad_mag))
-    # Create a binary mask where mag thresholds are met
-    mag_bin = np.zeros_like(scaled_grad_mag)
-    mag_bin[(scaled_grad_mag >= thresh[0]) & (scaled_grad_mag <= thresh[1])] = 1
-    return mag_bin
-
 def dir_thresh(img, sobel_kernel=5, thresh=(np.pi/4, np.pi/2)):
     # Convert to grayscale
     gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
@@ -68,7 +54,22 @@ def dir_thresh(img, sobel_kernel=5, thresh=(np.pi/4, np.pi/2)):
     # Return this mask as your binary_output image
     return dir_bin
 
-def s_thresh(img, thresh=(170,255)):
+def mag_thresh(img, sobel_kernel=7, thresh=(150, 255)):
+    # Convert to grayscale
+    gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
+    # Take the gradient in x and y separately
+    sobelx = cv2.Sobel(gray, cv2.CV_64F, 1, 0, ksize=sobel_kernel)
+    sobely = cv2.Sobel(gray, cv2.CV_64F, 0, 1, ksize=sobel_kernel)
+    # Calculate the gradient magnitude
+    grad_mag = np.sqrt(np.square(sobelx) + np.square(sobely))
+    # Scale to 8-bit (0 - 255) and convert to type = np.uint8
+    scaled_grad_mag = np.uint8(255 * grad_mag / np.max(grad_mag))
+    # Create a binary mask where mag thresholds are met
+    mag_bin = np.zeros_like(scaled_grad_mag)
+    mag_bin[(scaled_grad_mag >= thresh[0]) & (scaled_grad_mag <= thresh[1])] = 1
+    return mag_bin
+
+def s_thresh(img, thresh=(150,255)):
     # Convert to HLS color space and separate the S channel
     hls = cv2.cvtColor(img, cv2.COLOR_RGB2HLS).astype(np.float)
     s_channel = hls[:, :, 2]
@@ -77,61 +78,51 @@ def s_thresh(img, thresh=(170,255)):
     s_bin[(s_channel >= thresh[0]) & (s_channel <= thresh[1])] = 1
     return s_bin
 
-def v_thresh(img, thresh=(170,255)):
-    # Convert to HSV color space and separate the S channel
+def v_thresh(img, img_bin):
+    # Convert to HSV color space and separate the V channel
     hsv = cv2.cvtColor(img, cv2.COLOR_RGB2HSV).astype(np.float)
     v_channel = hsv[:, :, 2]
     # Threshold color channel
-    v_bin = np.zeros_like(v_channel)
-    v_bin[(v_channel >= thresh[0]) & (v_channel <= thresh[1])] = 1
+    v_bin = np.zeros_like(v_channel, dtype=np.uint8)
+    # Take lower portion of image for intensity normalisation
+    img_height_lower = 2 * img_bin.shape[0] // 3
+    # Use only bottom part of image for histogram calculation
+    img_bin = img_bin[img_height_lower:, :]
+    # Use only bottom part of image for histogram calculation
+    # Fit gaussian to image levels
+    mu, sigma = norm.fit(v_channel[img_height_lower:, :][img_bin == 0].flatten())
+    v_bin[v_channel > (mu + 1.5*sigma)] = 1
     return v_bin
 
 def threshold_image(img, visualise=False):
     # Process image based on gradient and color thresholds
-    # Choose a Sobel kernel size
-    ksize = 7  # Choose a larger odd number to smooth gradient measurements
-
-    # Apply each of the thresholding functions
-    #gradx_bin = sobel_thresh(img, orient='x', sobel_kernel=ksize, thresh=(100, 255))
-    #grady_bin = sobel_thresh(img, orient='y', sobel_kernel=ksize, thresh=(100, 255))
-    #dir_bin = dir_thresh(img, sobel_kernel=ksize, thresh=(np.pi / 4, np.pi / 5))
-    mag_bin = mag_thresh(img, sobel_kernel=ksize, thresh=(150, 255))
-    s_bin = np.zeros_like(mag_bin)
-    v_bin = v_thresh(img)
+    mag_bin = mag_thresh(img)
+    s_bin = s_thresh(img)
+    v_bin = v_thresh(img, mag_bin)
 
     # Combined thresholded binary
     img_bin = np.zeros_like(s_bin)
-    img_bin[(mag_bin == 1) | (v_bin == 1)] = 1
-
-    # Use only bottom part of image for histogram calculation
-    img_bin = img_bin[2 * img.shape[0] // 3:, :]
-    # Convert to grayscale
-    #img_gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
-    img_gray = cv2.cvtColor(img, cv2.COLOR_RGB2HSV)[:,:,2]
-    # Take a histogram of pixel intensity of the bottom third of the image
-    hist, bins = np.histogram(img_gray[2 * img.shape[0] // 3:, :][img_bin == 0], range(0, 256))
-    max_idx = np.argmax(hist)
-    avg_level = bins[max_idx]
-    img_hist = np.zeros_like(img_gray, dtype=np.uint8)
-    img_hist[img_gray > (avg_level + 40)] = 1
+    img_bin[(mag_bin == 1) | (s_bin ==1) | (v_bin == 1)] = 1
 
     if visualise:
         # Note color_binary[:, :, 0] is all 0s, effectively an all black image.
         # It might be beneficial to replace this channel with something else.
         color_bin = np.dstack((mag_bin, s_bin, v_bin))
         # Plot the result
-        f, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(24, 9))
+        f, (ax1, ax2, ax3, ax4) = plt.subplots(1, 4, figsize=(24, 9))
         f.tight_layout()
-        ax1.imshow(img_gray, cmap='gray')
+        ax1.imshow(img)
         ax1.set_title('Original Image', fontsize=40)
-        ax2.imshow(img_hist, cmap='gray')
+        ax2.imshow(color_bin)
         ax2.set_title('Color Result', fontsize=40)
-        ax3.imshow(img_bin, cmap='gray')
-        ax3.set_title('Binary Result', fontsize=40)
+        ax3.imshow(mag_bin, cmap='gray')
+        ax3.set_title('Gradient Result', fontsize=40)
+        ax4.imshow(img_bin, cmap='gray')
+        ax4.set_title('Binary Result', fontsize=40)
         plt.subplots_adjust(left=0., right=1, top=0.9, bottom=0.)
         plt.show()
 
-    return img_hist
+    return img_bin
 
 def undistort_image(img, mtx, dist, visualise=False):
     # Undistort image using camera intrinsic parameters
@@ -168,36 +159,28 @@ def view_road_top(img_bin, img=None, visualise=False):
         plt.show()
     return img_top
 
-def hist_image(img, visualise=False):
-    # Calculate thresholded gradient magnitude image
-    mag_bin = mag_thresh(img, sobel_kernel=7, thresh=(150, 255))
-    # Calculate thresholded s-channel image
-    s_bin = s_thresh(img)
-    # Calculate thresholded s-channel image
-    l_bin = l_thresh(img)
-    # Combined thresholded binary
-    img_bin = np.zeros_like(s_bin)
-    img_bin[(mag_bin == 1) | (s_bin == 1) | (l_bin == 1)] = 1
+def hist_image(img_gray, img_bin, visualise=False):
+    # Take lower portion of image for intensity normalisation
+    img_height_lower = 2 * img_gray.shape[0] // 3
     # Use only bottom part of image for histogram calculation
-    img_bin = img_bin[2*img.shape[0]//3:, :]
+    img_bin = img_bin[img_height_lower:, :]
     # Convert to grayscale
-    img_gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
+    #img_gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
+    # img_gray = cv2.cvtColor(img, cv2.COLOR_RGB2HSV)[:,:,2]
     # Take a histogram of pixel intensity of the bottom third of the image
-    hist, bins = np.histogram(img_gray[2*img.shape[0]//3:,:][img_bin==0], range(0,256))
+    hist, bins = np.histogram(img_gray[img_height_lower:, :][img_bin == 0], range(0, 256))
     max_idx = np.argmax(hist)
-    avg_level = bins[max_idx]
+    avg_level = bins[max_idx-1]
+    # best fit of data
+    mu, sigma = norm.fit(img_gray[img_height_lower:, :][img_bin == 0].flatten())
+    print('Mu: {}, Sigma {} Avg: {}'.format(mu, sigma, avg_level))
     img_hist = np.zeros_like(img_gray, dtype=np.uint8)
-    img_hist[img_gray > (avg_level + 50)] = 1
+    img_hist[img_gray > (mu + 2*sigma)] = 1
 
     if visualise:
-        f, (ax1, ax2) = plt.subplots(1, 2, figsize=(24, 9))
-        f.tight_layout()
-        ax1.imshow(l_bin, cmap='gray')
-        ax1.set_title('Original Image', fontsize=50)
-        ax2.imshow(img_hist, cmap='gray')
-        ax2.set_title('Projected Image', fontsize=50)
-        plt.subplots_adjust(left=0., right=1, top=0.9, bottom=0.)
+        # Plot histogram of the bottom half of the image
+        plt.plot(bins[:-1], hist)
         plt.show()
-        print(avg_level)
+        print('Avg. Level: ', avg_level)
 
     return img_hist

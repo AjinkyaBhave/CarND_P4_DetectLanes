@@ -38,7 +38,7 @@ left_line  = Line()
 right_line = Line()
 
 # Set the width of the windows +/- margin
-margin = 100
+margin = 50
 # Metres per pixel in x dimension
 xm_per_pix = 3.7/700
 # Metres per pixel in y dimension
@@ -122,7 +122,7 @@ def fit_lane(img_bin, visualise=False):
     nonzeroy = np.array(nonzero[0])
     nonzerox = np.array(nonzero[1])
 
-    # Start sliding window search if either left or right lines were not detected in previous frame
+    # Start sliding window search if either left or right lines were not detected in previous n_missed_frames frames
     if (not left_line.detected) or (not right_line.detected):
         left_line_idx, right_line_idx = sliding_window(img_bin, img_out, nonzerox, nonzeroy, visualise=visualise)
     else:
@@ -150,7 +150,7 @@ def fit_lane(img_bin, visualise=False):
         ## Calculate goodness of fit here...
         ##
         # Calculate left line radius
-        left_rad, _ = find_curvature(lefty, leftx, 'left')
+        left_rad, tmp = find_curvature(lefty, leftx, 'left')
         # Calculate average fit to line
         if len(left_line.recent_fit) == left_line.n_fit:
             left_line.avg_fit = np.sum(np.asarray(left_line.recent_fit), axis=0)/left_line.n_fit
@@ -176,7 +176,7 @@ def fit_lane(img_bin, visualise=False):
         ## Calculate goodness of fit here...
         ##
         # Calculate right line radius
-        _, right_rad = find_curvature(righty, rightx,  'right')
+        tmp, right_rad = find_curvature(righty, rightx, 'right')
         # Calculate average fit to line
         if len(right_line.recent_fit) == right_line.n_fit:
             right_line.avg_fit = np.sum(np.asarray(right_line.recent_fit), axis=0)/right_line.n_fit
@@ -196,8 +196,6 @@ def fit_lane(img_bin, visualise=False):
         right_line.centre_offset = centre_offset
 
     if visualise:
-        print('Radius: ', left_line.radius, right_line.radius)
-        print('Centre Offset: ', left_line.centre_offset)
         plot_lanes(img_out, left_line.current_fit, right_line.current_fit)
 
     return left_line.current_fit, right_line.current_fit
@@ -206,28 +204,54 @@ def find_curvature(liney, linex, lane_line):
     # Y-coordinate of point to calculate the curvature at
     y_eval = int(img_height/2)
     # Fit new polynomials to x,y in world space
-    left_rad  = -1
-    right_rad = -1
+    left_rad  = -1.0
+    right_rad = -1.0
     if lane_line == 'left':
         left_fit_wc  = np.polyfit(liney * ym_per_pix, linex * xm_per_pix, left_line.fit_degree)
-        # Calculate the new radii of curvature
+        # Calculate the new left radius of curvature
         left_rad = ((1 + (2 * left_fit_wc[0] * y_eval * ym_per_pix + left_fit_wc[1]) ** 2) ** 1.5) \
-                     / np.absolute(2 * left_fit_wc[0])
+                     /np.absolute(2 * left_fit_wc[0])
     if lane_line == 'right':
-        right_fit_wc = np.polyfit(linex * ym_per_pix, linex * xm_per_pix, right_line.fit_degree)
+        right_fit_wc = np.polyfit(liney * ym_per_pix, linex * xm_per_pix, right_line.fit_degree)
+        # Calculate the new right radius of curvature
         right_rad = ((1 + (2 * right_fit_wc[0] * y_eval * ym_per_pix + right_fit_wc[1]) ** 2) ** 1.5) \
-                     / np.absolute(2 * right_fit_wc[0])
+                     /np.absolute(2 * right_fit_wc[0])
     return left_rad, right_rad
 
+'''def find_curvature(left_fit=[0,0,0], right_fit=[0,0,0], lane_line=None):
+    # Y-coordinate of point to calculate the curvature at
+    y_eval = int(img_height / 2)
+    # Fit new polynomials to x,y in world space
+    left_rad = -1.0
+    right_rad = -1.0
+    # Generate y values in world coordinates
+    y_fit = np.linspace(0, img_height - 1, img_height)
+
+    if lane_line == 'left':
+        leftx_fit = left_fit[0] * y_fit ** 2 + left_fit[1] * y_fit + left_fit[2]
+        left_fit_wc = np.polyfit(y_fit * ym_per_pix, leftx_fit * xm_per_pix, left_line.fit_degree)
+        # Calculate the new left radius of curvature
+        left_rad = ((1 + (2 * left_fit_wc[0] * y_eval * ym_per_pix + left_fit_wc[1]) ** 2) ** 1.5) \
+                   / np.absolute(2 * left_fit_wc[0])
+    if lane_line == 'right':
+        rightx_fit = right_fit[0] * y_fit ** 2 + right_fit[1] * y_fit + right_fit[2]
+        right_fit_wc = np.polyfit(y_fit * ym_per_pix, rightx_fit * xm_per_pix, right_line.fit_degree)
+        # Calculate the new right radius of curvature
+        right_rad = ((1 + (2 * right_fit_wc[0] * y_eval * ym_per_pix + right_fit_wc[1]) ** 2) ** 1.5) \
+                    / np.absolute(2 * right_fit_wc[0])
+    return left_rad, right_rad
+'''
+
 def find_offset():
-    y_base = img_height - 1
+    y_base = img_height - 10
     # Calculate x coordinate of base of left and right lines
-    leftx_base = left_line.current_fit[0] * (y_base) ** 2 + left_line.current_fit[1] * y_base + left_line.current_fit[2]
+    leftx_base = left_line.current_fit[0] * (y_base) ** 2 + left_line.current_fit[1] * y_base \
+                 + left_line.current_fit[2]
     rightx_base = right_line.current_fit[0] * (y_base) ** 2 + right_line.current_fit[1] * y_base + \
                   right_line.current_fit[2]
     # Calculate x coordinate of centre of lane
-    midx_base = int((rightx_base - leftx_base) / 2) + leftx_base
-    centre_offset = (midx_base - int(img_width / 2)) * xm_per_pix
+    midx_base = (rightx_base - leftx_base) // 2 + leftx_base
+    centre_offset = (midx_base - img_width//2) * xm_per_pix
     return centre_offset
 
 
