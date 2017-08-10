@@ -11,11 +11,11 @@ from detect_lanes import *
 
 # File and directory paths
 params_file   = 'camera_params.p'
-video_input   = 'project_video.mp4'
-video_output  = 'project_video_output.mp4'
+video_input   = 'harder_challenge_video.mp4'
+video_output  = 'harder_challenge_video_output.mp4'
 img_dir       = 'test_images/'
-img_file      = 'straight_lines1.jpg'
-video_img_dir =  img_dir+'project_video/'
+img_file      = 'curved_lines1.jpg'
+video_img_dir =  img_dir+'test_video/'
 
 # Read camera intrinsic matrix and distortion coefficients
 # Created initially with calibrate_camera.py
@@ -25,7 +25,7 @@ mtx  = params['intrinsic']
 dist = params['distortion']
 
 # Number of past camera images to store for smoothing
-n_prev_frames = 10
+n_prev_frames = int(np.ceil(0.1*video_FPS))
 # Contains history of last n_prev_frames camera images
 img_queue = deque(maxlen=n_prev_frames)
 
@@ -99,13 +99,13 @@ if __name__ == '__main__':
 
     if TEST_ON_VIDEO:
         # Video is at 25 FPS
-        clip = VideoFileClip(video_input).subclip(0,2)
+        clip = VideoFileClip(video_input)
         clip_output = clip.fl_image(track_lanes) #NOTE: this function expects color images!!
         clip_output.write_videofile(video_output, audio=False)
     else:
         if not os.listdir(video_img_dir):
             v_start = 0
-            v_end   = 1
+            v_end   = 2
             video_times = np.linspace(v_start, v_end, n_prev_frames+1)
             clip = VideoFileClip(video_input).subclip(v_start, v_end)
             for vt in video_times:
@@ -114,6 +114,7 @@ if __name__ == '__main__':
 
         # Read camera frames from disk
         img_files = glob.glob(video_img_dir+'video*.jpg')
+        #img_files = glob.glob(img_dir + 'curved_lines*.jpg')
         for img_file in img_files:
             img = mpimg.imread(img_file)
             track_lanes(img)
