@@ -11,8 +11,8 @@ from detect_lanes import *
 
 # File and directory paths
 params_file   = 'camera_params.p'
-video_input   = 'harder_challenge_video.mp4'
-video_output  = 'harder_challenge_video_output.mp4'
+video_input   = 'challenge_video.mp4'
+video_output  = 'challenge_video_output.mp4'
 img_dir       = 'test_images/'
 img_file      = 'curved_lines1.jpg'
 video_img_dir =  img_dir+'test_video/'
@@ -66,7 +66,7 @@ def draw_lanes(img_undist, img_top, left_fit, right_fit, visualise=False):
     return img_out
 
 # Pipeline to process camera image to isolate lane markings
-def image_pipeline(img_max, img, visualise=False):
+def image_pipeline(img_max, img, visualise=True):
     img_undist = undistort_image(img_max, mtx=mtx, dist=dist, visualise=False)
     img_thresh = threshold_image(img_undist, visualise=visualise)
     img_top = view_road_top(img_thresh, img_max, visualise=visualise)
@@ -92,7 +92,7 @@ def track_lanes(img):
 if __name__ == '__main__':
 
     # Run on video file if true else run on test images
-    TEST_ON_VIDEO = 1
+    TEST_ON_VIDEO = 0
     # No lane lines are detected at start of driving
     left_line.detected = False
     right_line.detected = False
@@ -104,16 +104,16 @@ if __name__ == '__main__':
         clip_output.write_videofile(video_output, audio=False)
     else:
         if not os.listdir(video_img_dir):
-            v_start = 0
-            v_end   = 2
-            video_times = np.linspace(v_start, v_end, n_prev_frames+1)
+            v_start = 2
+            v_end   = 4
+            video_times = np.linspace(v_start, v_end, 20)
             clip = VideoFileClip(video_input).subclip(v_start, v_end)
             for vt in video_times:
                 video_img_file = video_img_dir + 'video{:3.2}.jpg'.format(vt)
                 clip.save_frame(video_img_file, vt)
 
         # Read camera frames from disk
-        img_files = glob.glob(video_img_dir+'video*.jpg')
+        img_files = glob.glob(video_img_dir+'video2*.jpg')
         #img_files = glob.glob(img_dir + 'curved_lines*.jpg')
         for img_file in img_files:
             img = mpimg.imread(img_file)

@@ -8,6 +8,10 @@ from process_image import img_height_crop
 video_FPS = 25
 # Maximum number of missed frames allowed
 max_missed_frames = int(np.ceil(0.1*video_FPS))
+# Minimum width of U.S. highway lanes in metre
+min_lane_width = 3.7/2
+# Minimum curvature of U.S. highway lanes in 1/metre
+min_lane_curvature = 178
 # Set the width of the windows +/- margin
 win_margin = 50
 # Set width of histogram search
@@ -155,8 +159,7 @@ def fit_lane(img_bin, visualise=False):
         print('window search')
         left_line_idx, right_line_idx = sliding_window(img_bin, img_out, nonzerox, nonzeroy, visualise=visualise)
     else:
-        print('focused search')
-        print(left_line.current_fit)
+        #print('focused search')
         # Otherwise start focused search around most recent left and right lines detected
         left_line_idx = ((nonzerox > (left_line.current_fit[0] * (nonzeroy ** 2) + left_line.current_fit[1] * nonzeroy + left_line.current_fit[2] - win_margin)) & (
                           nonzerox < (left_line.current_fit[0] * (nonzeroy ** 2) + left_line.current_fit[1] * nonzeroy + left_line.current_fit[2] + win_margin)))
@@ -177,12 +180,10 @@ def fit_lane(img_bin, visualise=False):
     # If minimum pixels of left line not detected in current image
     if leftx.size < min_pixels_line:
         left_line.detected = False
-        # Increment missed frames counter
-        left_line.n_missed_frames += 1
     else:
         # Fit a second order polynomial to detected left line pixels
         left_fit = np.polyfit(lefty, leftx, left_line.fit_degree)
-        # Calculate goodness of fit
+        # Calculate x-cordinate of start of left lane
         left_line_xm = left_fit[0] * img_height_crop ** 2 + left_fit[1] * img_height_crop + left_fit[2]
         left_line_xm *= xm_per_pix
 
@@ -194,18 +195,23 @@ def fit_lane(img_bin, visualise=False):
     else:
         # Fit a second order polynomial to detected right line pixels
         right_fit = np.polyfit(righty, rightx, right_line.fit_degree)
-        # Calculate goodness of fit
+        # Calculate x-cordinate of start of right lane
         right_line_xm = right_fit[0] * img_height_crop ** 2 + right_fit[1] * img_height_crop + right_fit[2]
         right_line_xm *= xm_per_pix
 
-    if (right_line_xm-left_line_xm) > lane_width_m:
-        left_line.detected = False
-        left_line.n_missed_frames +=1
-        right_line.detected = False
+    # Check if lane width is within standard minimum width
+    if left_line.detected and right_line.detected:
+        current_lane_width = right_line_xm - left_line_xm
+        if (current_lane_width) < min_lane_width:
+            print(current_lane_width)
+            left_line.detected = False
+            right_line.detected = False
 
-
-    # Left line pixels are detected accurately in current image
-    if left_line.detected == True:
+    if left_line.detected == False:
+        # Increment missed frames counter
+        left_line.n_missed_frames += 1
+    else:
+        # Left line pixels are detected accurately in current image
         # Reset missed frames counter
         left_line.n_missed_frames = 0
         # Calculate left line radius
@@ -223,8 +229,11 @@ def fit_lane(img_bin, visualise=False):
         left_line.current_fit = left_fit
         left_line.radius = left_rad
 
-    # Right line pixels are detected accurately
-    if right_line.detected == True:
+    if right_line.detected == False:
+        # Increment missed frames counter
+        right_line.n_missed_frames += 1
+    else:
+        # Right line pixels are detected accurately
         # Reset missed frames counter
         right_line.n_missed_frames = 0
         # Calculate right line radius

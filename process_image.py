@@ -10,7 +10,7 @@ img_height_crop = 670
 top_left  = [570, 470]
 top_right = [720, 470]
 bottom_right = [1130, img_height_crop] # Originally 720
-bottom_left  = [200, img_height_crop] # Originally 720
+bottom_left  = [200, img_height_crop]  # Originally 720
 src_pts = np.array([bottom_left, bottom_right, top_right, top_left], dtype=np.float32)
 
 # Destination points are chosen such that straight lanes appear more or less parallel in the transformed image
@@ -20,17 +20,16 @@ top_left  = [350, 1]
 top_right = [875, 1]
 dst_pts = np.array([bottom_left, bottom_right, top_right, top_left], dtype=np.float32)
 
-def sobel_thresh(img, orient='x', sobel_kernel=3, thresh=(150, 255)):
-    # Convert to grayscale
-    gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
+def sobel_thresh(img, orient='x', sobel_kernel=7, thresh=(20, 400)):
+    # Convert to Y-channel
+    img_y = cv2.cvtColor(img, cv2.COLOR_RGB2YUV)[:,:,0]
     # Take the gradient in x and y separately
     if orient == 'x':
-        sobel = cv2.Sobel(gray, cv2.CV_64F, 1, 0, ksize=sobel_kernel)
+        sobel = cv2.Sobel(img_y, cv2.CV_64F, 1, 0, ksize=sobel_kernel)
     elif orient == 'y':
-        sobel = cv2.Sobel(gray, cv2.CV_64F, 0, 1, ksize=sobel_kernel)
+        sobel = cv2.Sobel(img_y, cv2.CV_64F, 0, 1, ksize=sobel_kernel)
     else:
         print('Sobel orientation should be x or y')
-        grad_binary = np.copy(img)
     # Take absolute value of gradient
     sobel = np.absolute(sobel)
     # Scale to 8-bit (0 - 255) and convert to type = np.uint8
@@ -57,10 +56,12 @@ def dir_thresh(img, sobel_kernel=5, thresh=(np.pi/4, np.pi/2)):
     # Return this mask as your binary_output image
     return dir_bin
 
-def mag_thresh(img_bin, sobel_kernel=5, thresh=(120, 255)):
+def mag_thresh(img, sobel_kernel=5, thresh=(100, 200)):
+    # Take Y-channel of image
+    img_y = cv2.cvtColor(img, cv2.COLOR_RGB2YUV)[:,:,0]
     # Take the gradient in x and y separately
-    sobelx = cv2.Sobel(img_bin, cv2.CV_64F, 1, 0, ksize=sobel_kernel)
-    sobely = cv2.Sobel(img_bin, cv2.CV_64F, 0, 1, ksize=sobel_kernel)
+    sobelx = cv2.Sobel(img_y, cv2.CV_64F, 1, 0, ksize=sobel_kernel)
+    sobely = cv2.Sobel(img_y, cv2.CV_64F, 0, 1, ksize=sobel_kernel)
     # Calculate the gradient magnitude
     grad_mag = np.sqrt(np.square(sobelx) + np.square(sobely))
     # Scale to 8-bit (0 - 255) and convert to type = np.uint8
@@ -70,31 +71,20 @@ def mag_thresh(img_bin, sobel_kernel=5, thresh=(120, 255)):
     mag_bin[(scaled_grad_mag >= thresh[0]) & (scaled_grad_mag <= thresh[1])] = 1
     return mag_bin
 
-def r_thresh(img, thresh=(170,255)):
-    img_r = img[:,:,0]
-    # Create a binary mask where mag thresholds are met
-    r_bin = np.zeros_like(img_r)
-    r_bin[(img_r >= thresh[0]) & (img_r <= thresh[1])] = 1
-    return r_bin
-
-def l_thresh(img):
+def l_thresh(img, img_bin):
     # Convert to HLS color space and separate the L channel
     hls = cv2.cvtColor(img, cv2.COLOR_RGB2HLS).astype(np.float)
     l_channel = hls[:,:,1]
     # Threshold color channel
     l_bin = np.zeros_like(l_channel)
     # Take lower portion of image for intensity normalisation
-    img_height_lower = l_channel.shape[0]//2
-    # Take a histogram of pixel intensity of the bottom third of the image
-    hist, bins = np.histogram(l_channel[img_height_lower:, :], np.arange(0, 256))
-    max_idx = np.argmax(hist)
-    avg_level = bins[max_idx]
-    l_bin[l_channel > (avg_level + 100)] = 1
-    plt.plot(bins[:-1], hist)
-    plt.show()
-    return l_channel
+    img_height_lower = l_channel.shape[0]//3
+    img_bin = img_bin[img_height_lower:, :]
+    mu, sigma = norm.fit(l_channel[img_height_lower:, :][img_bin == 0].flatten())
+    l_bin[l_channel > (mu + 2*sigma)] = 1
+    return l_bin
 
-def b_thresh(img, thresh=(150,255)):
+def b_thresh(img, thresh=(140,255)):
     # Convert to LAB color space and separate the B channel
     lab = cv2.cvtColor(img, cv2.COLOR_RGB2LAB).astype(np.float)
     b_channel = lab[:,:,2]
@@ -104,29 +94,36 @@ def b_thresh(img, thresh=(150,255)):
     return b_bin
 
 def threshold_image(img, visualise=False):
-    # Process image based on color thresholds
-    r_bin = r_thresh(img)
+    # Process image based on gradient thresholds for edges
+    sobel_bin = sobel_thresh(img)
+    # Process image based on intensity thresholds for white lines
+    l_bin = l_thresh(img, sobel_bin)
+    # Process image based on saturation thresholds for yellow lines
     b_bin = b_thresh(img)
 
     # Combined thresholded binary
     img_bin = np.zeros_like(img[:,:,0])
-    img_bin[(b_bin==1) | (r_bin==1)] = 1
+    img_bin[(b_bin==1) | (l_bin==1)] = 1
 
     if visualise:
         # Note color_binary[:, :, 0] is all 0s, effectively an all black image.
         # It might be beneficial to replace this channel with something else.
         #color_bin = np.dstack((np.zeros_like(mag_bin, dtype=np.uint8), s_bin, l_bin))
         # Plot the result
-        f, (ax1, ax2, ax3, ax4) = plt.subplots(1, 4, figsize=(24, 9))
+        f, (ax1, ax2, ax3, ax4, ax5, ax6) = plt.subplots(1, 6, figsize=(24, 9))
         f.tight_layout()
         ax1.imshow(img)
         ax1.set_title('Image', fontsize=40)
-        ax2.imshow(b_bin, cmap='gray')
-        ax2.set_title('B Image', fontsize=40)
-        ax3.imshow(r_bin, cmap='gray')
-        ax3.set_title('R Image', fontsize=40)
-        ax4.imshow(img_bin, cmap='gray')
-        ax4.set_title('Binary Result', fontsize=40)
+        ax2.imshow(sobel_bin, cmap='gray')
+        ax2.set_title('Sobel Image', fontsize=40)
+        ax3.imshow(l_bin, cmap='gray')
+        ax3.set_title('L Image', fontsize=40)
+        ax4.imshow(b_bin, cmap='gray')
+        ax4.set_title('B Image', fontsize=40)
+        ax5.imshow(r_bin, cmap='gray')
+        ax5.set_title('R Image', fontsize=40)
+        ax6.imshow(img_bin, cmap='gray')
+        ax6.set_title('Binary Result', fontsize=40)
         plt.subplots_adjust(left=0., right=1, top=0.9, bottom=0.)
         plt.show()
 
