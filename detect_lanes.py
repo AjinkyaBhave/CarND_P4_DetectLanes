@@ -8,14 +8,18 @@ from process_image import img_height_crop
 video_FPS = 25
 # Maximum number of missed frames allowed
 max_missed_frames = int(np.ceil(0.1*video_FPS))
-# Minimum width of U.S. highway lanes in metre
+# Empirical minimum width of lanes in metre
 min_lane_width = 3.7/2
-# Minimum curvature of U.S. highway lanes in 1/metre
-min_lane_curvature = 178
+# Minimum radius of curvature of U.S. highway lanes in metre
+min_lane_radius = 200
+# Ratio between current and previous radius of curvature
+max_radius_ratio = 100
+# Weight of current fit to average fit to keep for current calculation
+fit_gain = 0.90
 # Set the width of the windows +/- margin
 win_margin = 50
 # Set width of histogram search
-hist_margin = 300
+hist_margin = 320
 # Minimum pixels needed to accept line detected
 min_pixels_line = 5
 # Metres per pixel in x dimension
@@ -45,7 +49,7 @@ class Line():
         # polynomial coefficients of the last n_fit of the line
         self.recent_fit = deque(maxlen=self.n_fit)
         # polynomial coefficients averaged over the last n iterations
-        self.avg_fit = None
+        self.avg_fit = np.array([0.0,0.0,0.0], dtype=np.float32)
         # polynomial coefficients for the most recent fit
         self.current_fit = [np.array([False])]
         # difference in fit coefficients between last and new fits
@@ -55,9 +59,9 @@ class Line():
         # y values for detected line pixels
         self.ally = None
         # radius of curvature of the line in metres
-        self.radius = None
+        self.radius = min_lane_radius
         # distance of vehicle center from the centre of lane in meters
-        self.centre_offset = None
+        self.centre_offset = 0
 
 # Objects containing attributes for left and right ego-lane lines
 left_line  = Line()
@@ -150,13 +154,12 @@ def fit_lane(img_bin, visualise=False):
     nonzeroy = np.array(nonzero[0])
     nonzerox = np.array(nonzero[1])
 
-    # Indicate which line to use based on correctly detected pixels
-    line_to_use = 'both'
+    # Indicate which line to search for based on correctly detected pixels and past frames
     search_left_line  = not left_line.detected and (left_line.n_missed_frames >= max_missed_frames)
     search_right_line = not right_line.detected and (right_line.n_missed_frames >= max_missed_frames)
     # Start sliding window search if either left or right lines were not detected in previous n_missed_frames frames
     if (search_left_line or search_right_line ) :
-        print('window search')
+        #print('window search')
         left_line_idx, right_line_idx = sliding_window(img_bin, img_out, nonzerox, nonzeroy, visualise=visualise)
     else:
         #print('focused search')
@@ -166,47 +169,16 @@ def fit_lane(img_bin, visualise=False):
         right_line_idx = ((nonzerox > (right_line.current_fit[0] * (nonzeroy ** 2) + right_line.current_fit[1] * nonzeroy + right_line.current_fit[2] - win_margin)) & (
                            nonzerox < (right_line.current_fit[0] * (nonzeroy ** 2) + right_line.current_fit[1] * nonzeroy + right_line.current_fit[2] + win_margin)))
 
-
     # Extract left and right line pixel positions
     leftx = nonzerox[left_line_idx]
     lefty = nonzeroy[left_line_idx]
     rightx = nonzerox[right_line_idx]
     righty = nonzeroy[right_line_idx]
 
-    # Assume lane lines have been detected and check if true
-    left_line.detected  = True
-    right_line.detected = True
+    # Check if lines are correct based on previous frames
+    left_fit, right_fit, left_rad, right_rad = check_lane_fit(lefty, leftx, righty, rightx)
 
-    # If minimum pixels of left line not detected in current image
-    if leftx.size < min_pixels_line:
-        left_line.detected = False
-    else:
-        # Fit a second order polynomial to detected left line pixels
-        left_fit = np.polyfit(lefty, leftx, left_line.fit_degree)
-        # Calculate x-cordinate of start of left lane
-        left_line_xm = left_fit[0] * img_height_crop ** 2 + left_fit[1] * img_height_crop + left_fit[2]
-        left_line_xm *= xm_per_pix
-
-    # If minimum pixels of right line not detected in current image
-    if rightx.size < min_pixels_line:
-        right_line.detected = False
-        # Increment missed frames counter
-        right_line.n_missed_frames += 1
-    else:
-        # Fit a second order polynomial to detected right line pixels
-        right_fit = np.polyfit(righty, rightx, right_line.fit_degree)
-        # Calculate x-cordinate of start of right lane
-        right_line_xm = right_fit[0] * img_height_crop ** 2 + right_fit[1] * img_height_crop + right_fit[2]
-        right_line_xm *= xm_per_pix
-
-    # Check if lane width is within standard minimum width
-    if left_line.detected and right_line.detected:
-        current_lane_width = right_line_xm - left_line_xm
-        if (current_lane_width) < min_lane_width:
-            print(current_lane_width)
-            left_line.detected = False
-            right_line.detected = False
-
+    # Save left and right line parameters if correctly detected
     if left_line.detected == False:
         # Increment missed frames counter
         left_line.n_missed_frames += 1
@@ -214,11 +186,8 @@ def fit_lane(img_bin, visualise=False):
         # Left line pixels are detected accurately in current image
         # Reset missed frames counter
         left_line.n_missed_frames = 0
-        # Calculate left line radius
-        left_rad, _ = find_curvature(lefty, leftx, 'left')
-        # Calculate average fit to line
+        # Keep at most n_fit past fits
         if len(left_line.recent_fit) == left_line.n_fit:
-            left_line.avg_fit = np.sum(np.asarray(left_line.recent_fit), axis=0)/left_line.n_fit
             left_line.recent_fit.popleft()
         # Add current fit to end of list
         left_line.recent_fit.append(left_fit)
@@ -226,8 +195,10 @@ def fit_lane(img_bin, visualise=False):
         left_line.allx = leftx
         left_line.ally = lefty
         left_line.diffs = np.abs(left_line.current_fit - left_fit)
-        left_line.current_fit = left_fit
+        left_line.current_fit = np.asarray(left_fit) # + (1-fit_gain)*left_line.avg_fit
         left_line.radius = left_rad
+        # Calculate average fit to line
+        left_line.avg_fit = np.sum(np.asarray(left_line.recent_fit), axis=0)/left_line.n_fit
 
     if right_line.detected == False:
         # Increment missed frames counter
@@ -236,11 +207,8 @@ def fit_lane(img_bin, visualise=False):
         # Right line pixels are detected accurately
         # Reset missed frames counter
         right_line.n_missed_frames = 0
-        # Calculate right line radius
-        _, right_rad = find_curvature(righty, rightx, 'right')
-        # Calculate average fit to line
+        # Keep at most n_fit past fits
         if len(right_line.recent_fit) == right_line.n_fit:
-            right_line.avg_fit = np.sum(np.asarray(right_line.recent_fit), axis=0)/right_line.n_fit
             right_line.recent_fit.popleft()
         # Add current fit to end of list
         right_line.recent_fit.append(right_fit)
@@ -248,7 +216,9 @@ def fit_lane(img_bin, visualise=False):
         right_line.allx = rightx
         right_line.ally = righty
         right_line.diffs = right_line.current_fit - right_fit
-        right_line.current_fit = right_fit
+        right_line.current_fit = np.array(right_fit) # + (1-fit_gain)*right_line.avg_fit
+        # Calculate average fit to line
+        right_line.avg_fit = np.sum(np.asarray(right_line.recent_fit), axis=0) / len(right_line.recent_fit)
         right_line.radius = right_rad
 
     if left_line.detected and right_line.detected:
@@ -261,6 +231,82 @@ def fit_lane(img_bin, visualise=False):
         plot_lanes(img_out, left_line.current_fit, right_line.current_fit)
 
     return left_line.current_fit, right_line.current_fit
+
+def check_lane_fit(lefty, leftx, righty, rightx):
+    # Assume lane lines have been detected and check if true
+    left_line.detected = True
+    right_line.detected = True
+
+    # Set empty lists for line fit coefficients
+    left_fit  = []
+    right_fit = []
+    left_rad  = min_lane_radius
+    right_rad = min_lane_radius
+    # If minimum pixels of left line not detected in current image
+    if leftx.size < min_pixels_line:
+        left_line.detected = False
+    else:
+        # Fit a second order polynomial to detected left line pixels
+        left_fit = np.polyfit(lefty, leftx, left_line.fit_degree)
+        # Check direction of curve
+        if left_fit[0]*left_line.current_fit[0] < 0:
+            if left_fit[0]*left_line.avg_fit[0] < 0:
+                left_fit = fit_gain*left_line.current_fit + (1-fit_gain)*left_fit
+                #print('Left curvature opposite:', left_fit, left_line.current_fit)
+
+        # Calculate left line radius
+        left_rad, _ = find_curvature(lefty, leftx, 'left')
+        # Check if radius is within deviation limits from previously calculated radius
+        if (left_rad/left_line.radius > max_radius_ratio) or (left_line.radius/left_rad > max_radius_ratio):
+            left_line.detected = False
+            #print('Left_radius different: ', left_rad, left_line.radius)
+        # Check if radius is greater than minimum standard U.S. highway radius
+        if left_rad < min_lane_radius:
+            left_line.detected = False
+            #print('Left radius small: ', left_rad)
+
+    # If minimum pixels of right line not detected in current image
+    if rightx.size < min_pixels_line:
+        right_line.detected = False
+        # Increment missed frames counter
+        right_line.n_missed_frames += 1
+    else:
+        # Fit a second order polynomial to detected right line pixels
+        right_fit = np.polyfit(righty, rightx, right_line.fit_degree)
+        # Check direction of curve
+        if right_fit[0] * right_line.current_fit[0] < 0:
+            if right_fit[0] * right_line.avg_fit[0] < 0:
+                right_fit = fit_gain*right_line.current_fit + (1-fit_gain)*right_fit
+                #print('Right curvature opposite: ', right_fit, right_line.current_fit)
+
+        # Calculate right line radius
+        _, right_rad = find_curvature(righty, rightx, 'right')
+        # Check if radius is within deviation limits from previously calculated radius
+        if(right_rad/right_line.radius > max_radius_ratio) or (right_line.radius/right_rad > max_radius_ratio):
+            right_line.detected = False
+            #print('Right radius different: ',right_rad, right_line.radius )
+        # Check if radius is greater than minimum standard U.S. highway radius
+        if right_rad < min_lane_radius:
+            right_line.detected = False
+            #print('Right radius small: ', right_rad)
+
+    # Check if lane width is within standard minimum width
+    if left_line.detected and right_line.detected:
+        # Calculate x-cordinate of start of left lane
+        left_line_xm = left_fit[0] * img_height_crop ** 2 + left_fit[1] * img_height_crop + left_fit[2]
+        left_line_xm *= xm_per_pix
+        # Calculate x-cordinate of start of right lane
+        right_line_xm = right_fit[0] * img_height_crop ** 2 + right_fit[1] * img_height_crop + right_fit[2]
+        right_line_xm *= xm_per_pix
+        current_lane_width = right_line_xm - left_line_xm
+        #print('Lane width: ', current_lane_width)
+        #print('Fit: ', left_fit, right_fit)
+        if (current_lane_width) < min_lane_width:
+            #print('Less than min width')
+            left_line.detected  = False
+            right_line.detected = False
+
+    return left_fit, right_fit, left_rad, right_rad
 
 def find_curvature(liney, linex, lane_line):
     # Y-coordinate of point to calculate the curvature at

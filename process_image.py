@@ -81,7 +81,7 @@ def l_thresh(img, img_bin):
     img_height_lower = l_channel.shape[0]//3
     img_bin = img_bin[img_height_lower:, :]
     mu, sigma = norm.fit(l_channel[img_height_lower:, :][img_bin == 0].flatten())
-    l_bin[l_channel > (mu + 2*sigma)] = 1
+    l_bin[l_channel > (mu + 1.5*sigma)] = 1
     return l_bin
 
 def b_thresh(img, thresh=(140,255)):
@@ -110,7 +110,7 @@ def threshold_image(img, visualise=False):
         # It might be beneficial to replace this channel with something else.
         #color_bin = np.dstack((np.zeros_like(mag_bin, dtype=np.uint8), s_bin, l_bin))
         # Plot the result
-        f, (ax1, ax2, ax3, ax4, ax5, ax6) = plt.subplots(1, 6, figsize=(24, 9))
+        f, (ax1, ax2, ax3, ax4, ax5) = plt.subplots(1, 5, figsize=(24, 9))
         f.tight_layout()
         ax1.imshow(img)
         ax1.set_title('Image', fontsize=40)
@@ -120,10 +120,8 @@ def threshold_image(img, visualise=False):
         ax3.set_title('L Image', fontsize=40)
         ax4.imshow(b_bin, cmap='gray')
         ax4.set_title('B Image', fontsize=40)
-        ax5.imshow(r_bin, cmap='gray')
-        ax5.set_title('R Image', fontsize=40)
-        ax6.imshow(img_bin, cmap='gray')
-        ax6.set_title('Binary Result', fontsize=40)
+        ax5.imshow(img_bin, cmap='gray')
+        ax5.set_title('Binary Result', fontsize=40)
         plt.subplots_adjust(left=0., right=1, top=0.9, bottom=0.)
         plt.show()
 
