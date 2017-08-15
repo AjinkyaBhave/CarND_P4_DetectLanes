@@ -141,4 +141,20 @@ Here is a [link to my challenge video result](./output_video/challenge_video_out
 
 #### 1. Briefly discuss any problems / issues you faced in your implementation of this project.  Where will your pipeline likely fail?  What could you do to make it more robust?
 
-Here I'll talk about the approach I took, what techniques I used, what worked and why, where the pipeline might fail and how I might improve it if I were going to pursue this project further.  
+The performance of the approach on the project and challenge videos shows that the algorithm is robust to moderate changes in lighting, shadows, lost lines, and outliers. This is because I implemented multiple robustness checks in the code in *check_lane_fit()*. The parameters for this logic are defined in lines 7-28.
+
+1. I use the *Line()* class (lines 35-64) to maintain a history of various detected parameters for each lane line, including the current and average fits over time. This helps to track the lines over the video, smoothen the detection plotting, and allows outlier detection more easily. 
+
+2. I rejected lines if a minimum number of pixels were not detected (lines 245,265). This helped avoid the algorithm from fitting a curve to small, isolated clusters of pixels, leading to very wrong curvatures.
+
+3. I check the coefficients of the line fit (lines 251-254) to see if the direction of the curve has suddenly changed (coeff[0] changes sign compared to previous value). This leads to sudden jumps in the curvature and the plotted lanes. To allow for small numerical discontinuities while fitting straight lines, I check the coefficient with the average coefficient calculated over the past *n_fit* frames. If the current coefficient sign is different from the average, I use the previous coefficient for the line direction.
+
+4. I check the calculated radius of curvature (lines 261,282) to make sure it is above a minimum threshold, based on empirical observation and using the U.S. highway specifications as the upper limit. This helps to reject lines that are changing too rapidly to be valid detections.
+
+5. I check that the difference in radius magnitude between current and previous calculations is within a reasonable deviation (lines 258, 279). This prevents sudden changes in lane curvature and allows better outlier rejection.
+
+6. I check that the calculated lane width is within reasonable limits (lines 286-296), otherwise I use the previous detected lines. This prevents the lane from suddenly becoming too small or too large, especially when lines are lost or there are shadows on the road.
+
+In spite of all these checks, I was not able to successfully navigate the harder challenge video. After analysing the result, I believe the extreme lighting conditions, extensive shadows, and sudden changes in curvature confuse the simple tracking scheme that I have implemented. A better approach would be to have a model of the lane that is tracked using a Kalman or particle filter. The same image processing pipeline would work but the filter would help to robustly estimate where the lines would be since there would be an underlying curvature and lane width model to help it reject impossible values. I do not believe my current approach can successfully complete the final video since there are too many corner cases to hard code. Unfortunately, I ran out of time to implement a more principled approach using lane model and associated estimation algorithm.
+ 
+Here is a [link to my harder challenge video result](./output_video/harder_challenge_video_output.mp4)

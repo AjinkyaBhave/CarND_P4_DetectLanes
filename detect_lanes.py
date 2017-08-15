@@ -195,7 +195,7 @@ def fit_lane(img_bin, visualise=False):
         left_line.allx = leftx
         left_line.ally = lefty
         left_line.diffs = np.abs(left_line.current_fit - left_fit)
-        left_line.current_fit = np.asarray(left_fit) # + (1-fit_gain)*left_line.avg_fit
+        left_line.current_fit = np.asarray(left_fit)
         left_line.radius = left_rad
         # Calculate average fit to line
         left_line.avg_fit = np.sum(np.asarray(left_line.recent_fit), axis=0)/left_line.n_fit
@@ -216,7 +216,7 @@ def fit_lane(img_bin, visualise=False):
         right_line.allx = rightx
         right_line.ally = righty
         right_line.diffs = right_line.current_fit - right_fit
-        right_line.current_fit = np.array(right_fit) # + (1-fit_gain)*right_line.avg_fit
+        right_line.current_fit = np.array(right_fit)
         # Calculate average fit to line
         right_line.avg_fit = np.sum(np.asarray(right_line.recent_fit), axis=0) / len(right_line.recent_fit)
         right_line.radius = right_rad
