@@ -112,6 +112,8 @@ After the lane lines have been detected once, subsequent detections are carried 
 
 ![Focused Search Result][image8]
 
+Notice how the algorithm rejects the bright patch of road at the top left of the image in both window and focused search because of limiting the initial search to a margin around the image midpoint.
+
 #### 5. Describe how (and identify where in your code) you calculated the radius of curvature of the lane and the position of the vehicle with respect to center.
 
 I used the code given in the tutorial to calculate the radius of curvature in function *find_curvature()* (lines 300-316) I modified the code to return a left or right radius, based on the *lane_line* input.
