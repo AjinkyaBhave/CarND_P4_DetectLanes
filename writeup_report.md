@@ -18,7 +18,7 @@ The goals / steps of this project are the following:
 
 [image1]: ./output_images/calibration_output.png 		
 [image2]: ./output_images/undist_output.png 			
-[image3]: ./output_images/binary.jpg 					"Binary Example"
+[image3]: ./output_images/threshold_output.png
 [image4]: ./output_images/warped_straight_lines.jpg 	"Warp Example"
 [image5]: ./output_images/color_fit_lines.jpg 			"Fit Visual"
 [image6]: ./output_images/example_output.jpg 			"Output"
@@ -57,14 +57,19 @@ The complete pipeline is implemented in the following files:
 3. *process_image.py*: low-level image processing for gradient and color thresholds, perspective transformation, and lane pixel identification.
 #### 1. Provide an example of a distortion-corrected image.
 
-To demonstrate this step, I will describe how I apply the distortion correction to one of the test images like this one:
+The image below shows the application of the distortion correction to one of the test images (straight_lines2.jpg).
 ![Road Transformed][image2]
 
 #### 2. Describe how (and identify where in your code) you used color transforms, gradients or other methods to create a thresholded binary image.  Provide an example of a binary image result.
 
-I used a combination of color and gradient thresholds to generate a binary image (thresholding steps at lines # through # in `another_file.py`).  Here's an example of my output for this step.  (note: this is not actually from one of the test images)
+I experimented with various combinations of color and gradient thresholds to come up with the most robust method of detecting yellow and white lines under different lighting conditions and videos. Initially, the s-channel from HSV was used for yellow lines with the V-channel for white lines. However, that was noisy for the challenge video images. I finally converged on the solution as:
+- B-channel from LAB space for robust detection of yellow lines
+- Sobel filter in the x-direction for line detection
+- L-channel from HSL space on Sobel gradient image and normalisation for intensity
 
-![alt text][image3]
+The low-level pipeline is implemented in process_image.py in threshold_image() (lines 98-106). The associated functions are also implemented in the same file. Here's an example of my output for this step. (note: this is from the first video frame of *project_video.mp4*)
+
+![Binary Output][image3]
 
 #### 3. Describe how (and identify where in your code) you performed a perspective transform and provide an example of a transformed image.
 

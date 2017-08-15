@@ -163,29 +163,3 @@ def view_road_top(img_bin, img=None, visualise=False):
         plt.show()
 
     return img_top
-
-def hist_image(img_gray, img_bin, visualise=False):
-    # Take lower portion of image for intensity normalisation
-    img_height_lower = 2 * img_gray.shape[0] // 3
-    # Use only bottom part of image for histogram calculation
-    img_bin = img_bin[img_height_lower:, :]
-    # Convert to grayscale
-    #img_gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
-    # img_gray = cv2.cvtColor(img, cv2.COLOR_RGB2HSV)[:,:,2]
-    # Take a histogram of pixel intensity of the bottom third of the image
-    hist, bins = np.histogram(img_gray[img_height_lower:, :][img_bin == 0], range(0, 256))
-    max_idx = np.argmax(hist)
-    avg_level = bins[max_idx-1]
-    # best fit of data
-    mu, sigma = norm.fit(img_gray[img_height_lower:, :][img_bin == 0].flatten())
-    print('Mu: {}, Sigma {} Avg: {}'.format(mu, sigma, avg_level))
-    img_hist = np.zeros_like(img_gray, dtype=np.uint8)
-    img_hist[img_gray > (mu + 2*sigma)] = 1
-
-    if visualise:
-        # Plot histogram of the bottom half of the image
-        plt.plot(bins[:-1], hist)
-        plt.show()
-        print('Avg. Level: ', avg_level)
-
-    return img_hist
