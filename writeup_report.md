@@ -19,10 +19,13 @@ The goals / steps of this project are the following:
 [image1]: ./output_images/calibration_output.png 		
 [image2]: ./output_images/undist_output.png 			
 [image3]: ./output_images/threshold_output.png
-[image4]: ./output_images/warped_straight_lines.jpg 	"Warp Example"
-[image5]: ./output_images/color_fit_lines.jpg 			"Fit Visual"
-[image6]: ./output_images/example_output.jpg 			"Output"
-[video1]: ./output_video/project_video_output.mp4 		"Video"
+[image4]: ./output_images/projected_straight_output.png 	
+[image5]: ./output_images/projected_curved_output.png			
+[image6]: ./output_images/hist_win_search.png 			
+[image7]: ./output_images/lines_win_search.png 			
+[image8]: ./output_images/lines_focus_search.png 			
+[image9]: ./output_images/detect_lane_output.png 			
+[video1]: ./output_video/project_video_output.mp4 		
 
 ### [Rubric](https://review.udacity.com/#!/rubrics/571/view) Points
 
@@ -55,6 +58,7 @@ The complete pipeline is implemented in the following files:
 1. *track_lanes.py*: Reads video and camera parameters, defines image pipeline, and draws final lane lines on output video.
 2. *detect_lanes.py*: fits lane lines in a single image using sliding window or focused search, checks goodness of fit, and outlier robustness measures.
 3. *process_image.py*: low-level image processing for gradient and color thresholds, perspective transformation, and lane pixel identification.
+4. *calibrate_camera.py*: Calculates and saves intrinsic parameters from checker board images.
 #### 1. Provide an example of a distortion-corrected image.
 
 The image below shows the application of the distortion correction to one of the test images (straight_lines2.jpg).
@@ -73,57 +77,63 @@ The low-level pipeline is implemented in process_image.py in threshold_image() (
 
 #### 3. Describe how (and identify where in your code) you performed a perspective transform and provide an example of a transformed image.
 
-The code for my perspective transform includes a function called `warper()`, which appears in lines 1 through 8 in the file `example.py` (output_images/examples/example.py) (or, for example, in the 3rd code cell of the IPython notebook).  The `warper()` function takes as inputs an image (`img`), as well as source (`src`) and destination (`dst`) points.  I chose the hardcode the source and destination points in the following manner:
-
-```python
-src = np.float32(
-    [[(img_size[0] / 2) - 55, img_size[1] / 2 + 100],
-    [((img_size[0] / 6) - 10), img_size[1]],
-    [(img_size[0] * 5 / 6) + 60, img_size[1]],
-    [(img_size[0] / 2 + 55), img_size[1] / 2 + 100]])
-dst = np.float32(
-    [[(img_size[0] / 4), 0],
-    [(img_size[0] / 4), img_size[1]],
-    [(img_size[0] * 3 / 4), img_size[1]],
-    [(img_size[0] * 3 / 4), 0]])
-```
-
-This resulted in the following source and destination points:
+The code for my perspective transform is implemented in *process_image.py* in the function *view_road_top()* (lines 144-165). The source and destination image points are defined in lines 6-21 of the same file.I chose to fix the source and destination points as follows, in clockwise direction from top left:
 
 | Source        | Destination   | 
 |:-------------:|:-------------:| 
-| 585, 460      | 320, 0        | 
-| 203, 720      | 320, 720      |
-| 1127, 720     | 960, 720      |
-| 695, 460      | 960, 0        |
+| 570, 470      | 350, 1        | 
+| 720, 470      | 875, 1        |
+| 1130, 670     | 900, 720      |
+| 200, 670      | 320, 720      |
 
-I verified that my perspective transform was working as expected by drawing the `src` and `dst` points onto a test image and its warped counterpart to verify that the lines appear parallel in the warped image.
+I chose to crop the bottom part of the image (y-coordinate of 670) to remove any specular reflection artifacts that appear on the car bonnet. This works well in practice and helps the lane fitting in the rest of the pipeline.
 
-![alt text][image4]
+I verified that my perspective transform was working as expected by drawing the `src` and `dst` points onto the *straight_lines2* test image and its warped counterpart to verify that the lines appear parallel in the warped image.
+
+![Top View Straight][image4]
+
+I also checked the transform on curved road segments from the video.
+
+![Top View Curved][image5]
 
 #### 4. Describe how (and identify where in your code) you identified lane-line pixels and fit their positions with a polynomial?
 
-Then I did some other stuff and fit my lane lines with a 2nd order polynomial kinda like this:
+The lane lines detection, fitting, and checking is implemented in multiple functions in the file *detect_lanes.py*. The main function is *fit_lane()* (lines 148-233) which calls a function for window-based search or focused search, checks for lane fit, and outlier detection.
 
-![alt text][image5]
+The initial window-based search is in *search_window()*, which is based on the code in the tutorial. I have modified the code to search for the first peak in a small area around the image midpoint. This helps to avoid spurious detections at the image boundaries from road edges, other cars, fences, and bright dust surfaces. The result of this modification can be seen in the clean peaks detected in the window histogram in the image below.
+
+![Line Pixels Histogram][image6]
+
+I also check for a minimum number of pixels to be detected before accepting the pixels as belonging to a line. An example binary image with the results of *search_window()* is shown below.
+
+![Window Search Result][image7]
+
+After the lane lines have been detected once, subsequent detections are carried out around the last detected lane centres (lines 166-170) in *fit_lane()*. Once the lines are detected, I check for goodness of fit in *check_lane_fit()* (lines 235-298) and reject outliers. I fit a second-order polynomial to the final detected pixels in lines (250,271). An example binary image with the results of the focused search and lane fit checking is shown below.
+
+![Focused Search Result][image8]
 
 #### 5. Describe how (and identify where in your code) you calculated the radius of curvature of the lane and the position of the vehicle with respect to center.
 
-I did this in lines # through # in my code in `my_other_file.py`
+I used the code given in the tutorial to calculate the radius of curvature in function *find_curvature()* (lines 300-316) I modified the code to return a left or right radius, based on the *lane_line* input.
+
+I calculate the position of vehicle in the lane in *find_offset()* (lines 318-328). I assume that the camera is placed so that the image midpoint is the vehicle centre and calculate the lane centre based on the left and right lane coordinates. The difference between the lane centre and image midpoint is the vehicle offset.
 
 #### 6. Provide an example image of your result plotted back down onto the road such that the lane area is identified clearly.
 
-I implemented this step in lines # through # in my code in `yet_another_file.py` in the function `map_lane()`.  Here is an example of my result on a test image:
+I implemented this in *track_lanes.py* in the function *draw_lanes()* (lines 33-67). Here is an example of my result on a video image:
 
-![alt text][image6]
+![Detected Lane][image9]
 
 ---
 
 ### Pipeline (video)
 
 #### 1. Provide a link to your final video output.  Your pipeline should perform reasonably well on the entire project video (wobbly lines are ok but no catastrophic failures that would cause the car to drive off the road!).
+The output videos are named appropriately and placed in the *./output_video* folder.
 
-Here's a [link to my video result](./project_video.mp4)
+Here is a [link to my project video result](./output_video/project_video_output.mp4)
+
+Here is a [link to my challenge video result](./output_video/challenge_video_output.mp4)
 
 ---
 

@@ -14,10 +14,10 @@ bottom_left  = [200, img_height_crop]  # Originally 720
 src_pts = np.array([bottom_left, bottom_right, top_right, top_left], dtype=np.float32)
 
 # Destination points are chosen such that straight lanes appear more or less parallel in the transformed image
-bottom_left  = [320, 720]
-bottom_right = [900, 720]
 top_left  = [350, 1]
 top_right = [875, 1]
+bottom_right = [900, 720]
+bottom_left  = [320, 720]
 dst_pts = np.array([bottom_left, bottom_right, top_right, top_left], dtype=np.float32)
 
 def sobel_thresh(img, orient='x', sobel_kernel=7, thresh=(20, 400)):

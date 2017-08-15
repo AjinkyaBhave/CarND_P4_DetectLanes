@@ -79,6 +79,8 @@ def sliding_window(img_bin, img_out, nonzerox, nonzeroy, visualise=False):
     # Find the peak of the left and right halves of the histogram
     # These will be the starting point for the left and right lines
     midpoint = hist_img.shape[0]//2
+    # Check for left and right lane peaks in a pre-defined margin around the midpoint of the image
+    # This helps to avoid spurious detections at the image boundaries from road edges, other cars, fences, and bright dust surfaces.
     leftx_base = np.argmax(hist_img[midpoint-hist_margin:midpoint]) + midpoint-hist_margin
     rightx_base = np.argmax(hist_img[midpoint:midpoint+hist_margin]) + midpoint
     # Current positions to be updated for each window
@@ -159,10 +161,8 @@ def fit_lane(img_bin, visualise=False):
     search_right_line = not right_line.detected and (right_line.n_missed_frames >= max_missed_frames)
     # Start sliding window search if either left or right lines were not detected in previous n_missed_frames frames
     if (search_left_line or search_right_line ) :
-        #print('window search')
         left_line_idx, right_line_idx = sliding_window(img_bin, img_out, nonzerox, nonzeroy, visualise=visualise)
     else:
-        #print('focused search')
         # Otherwise start focused search around most recent left and right lines detected
         left_line_idx = ((nonzerox > (left_line.current_fit[0] * (nonzeroy ** 2) + left_line.current_fit[1] * nonzeroy + left_line.current_fit[2] - win_margin)) & (
                           nonzerox < (left_line.current_fit[0] * (nonzeroy ** 2) + left_line.current_fit[1] * nonzeroy + left_line.current_fit[2] + win_margin)))
@@ -252,18 +252,14 @@ def check_lane_fit(lefty, leftx, righty, rightx):
         if left_fit[0]*left_line.current_fit[0] < 0:
             if left_fit[0]*left_line.avg_fit[0] < 0:
                 left_fit = fit_gain*left_line.current_fit + (1-fit_gain)*left_fit
-                #print('Left curvature opposite:', left_fit, left_line.current_fit)
-
         # Calculate left line radius
         left_rad, _ = find_curvature(lefty, leftx, 'left')
         # Check if radius is within deviation limits from previously calculated radius
         if (left_rad/left_line.radius > max_radius_ratio) or (left_line.radius/left_rad > max_radius_ratio):
             left_line.detected = False
-            #print('Left_radius different: ', left_rad, left_line.radius)
         # Check if radius is greater than minimum standard U.S. highway radius
         if left_rad < min_lane_radius:
             left_line.detected = False
-            #print('Left radius small: ', left_rad)
 
     # If minimum pixels of right line not detected in current image
     if rightx.size < min_pixels_line:
@@ -277,18 +273,14 @@ def check_lane_fit(lefty, leftx, righty, rightx):
         if right_fit[0] * right_line.current_fit[0] < 0:
             if right_fit[0] * right_line.avg_fit[0] < 0:
                 right_fit = fit_gain*right_line.current_fit + (1-fit_gain)*right_fit
-                #print('Right curvature opposite: ', right_fit, right_line.current_fit)
-
         # Calculate right line radius
         _, right_rad = find_curvature(righty, rightx, 'right')
         # Check if radius is within deviation limits from previously calculated radius
         if(right_rad/right_line.radius > max_radius_ratio) or (right_line.radius/right_rad > max_radius_ratio):
             right_line.detected = False
-            #print('Right radius different: ',right_rad, right_line.radius )
         # Check if radius is greater than minimum standard U.S. highway radius
         if right_rad < min_lane_radius:
             right_line.detected = False
-            #print('Right radius small: ', right_rad)
 
     # Check if lane width is within standard minimum width
     if left_line.detected and right_line.detected:
@@ -299,10 +291,7 @@ def check_lane_fit(lefty, leftx, righty, rightx):
         right_line_xm = right_fit[0] * img_height_crop ** 2 + right_fit[1] * img_height_crop + right_fit[2]
         right_line_xm *= xm_per_pix
         current_lane_width = right_line_xm - left_line_xm
-        #print('Lane width: ', current_lane_width)
-        #print('Fit: ', left_fit, right_fit)
         if (current_lane_width) < min_lane_width:
-            #print('Less than min width')
             left_line.detected  = False
             right_line.detected = False
 
