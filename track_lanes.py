@@ -67,7 +67,7 @@ def draw_lanes(img_undist, img_top, left_fit, right_fit, visualise=False):
     return img_out
 
 # Pipeline to process camera image to isolate lane markings
-def track_lanes(img, visualise=True):
+def track_lanes(img, visualise=False):
     img_undist = undistort_image(img, mtx=mtx, dist=dist, visualise=False)
     img_thresh = threshold_image(img_undist, visualise=visualise)
     img_top = view_road_top(img_thresh, img, visualise=visualise)
