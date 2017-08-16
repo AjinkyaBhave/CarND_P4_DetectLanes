@@ -37,7 +37,18 @@ The goals / steps of this project are the following:
 
 #### 1. Provide a Writeup / README that includes all the rubric points and how you addressed each one.  You can submit your writeup as markdown or pdf.  [Here](https://github.com/udacity/CarND-Advanced-Lane-Lines/blob/master/writeup_template.md) is a template writeup for this project you can use as a guide and a starting point.  
 
-This document.
+This document. Two changes were requested in Udacity review:
+1. Draw final lines on undistorted image, instead of original image.
+
+Solution: Changed the input to *draw_lanes()* to give undistorted image to draw on (line 75). Was earlier giving original image mistakenly. Fixed.
+
+2. Improve lane detection in some frames. 
+
+Solution: Used suggestions in review and implemented better thresholds for HSV and RGB space with Sobel. Please see *threshold_image()* in *process_image.py*. Final video shows no large deviations in tracked lanes throughout video. Fixed.
+
+Here is a [link to my resubmitted project video result](./output_video/project_video_output_rev.mp4)
+
+Rest of the writeup is the same, except for the thresholded binary output image, and changes to line numbers in code.
 
 ### Camera Calibration
 
