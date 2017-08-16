@@ -7,15 +7,15 @@ from scipy.stats import norm
 img_height_crop = 670
 
 # Source points are chosen to form a quadrangle on lane lines in the bottom half of image
-top_left  = [570, 470]
+top_left  = [565, 470]
 top_right = [720, 470]
-bottom_right = [1130, img_height_crop] # Originally 720
-bottom_left  = [200, img_height_crop]  # Originally 720
+bottom_right = [1120, 720] # Originally 720
+bottom_left  = [200, 720]  # Originally 720
 src_pts = np.array([bottom_left, bottom_right, top_right, top_left], dtype=np.float32)
 
 # Destination points are chosen such that straight lanes appear more or less parallel in the transformed image
-top_left  = [350, 1]
-top_right = [875, 1]
+top_left  = [320, 1]
+top_right = [900, 1]
 bottom_right = [900, 720]
 bottom_left  = [320, 720]
 dst_pts = np.array([bottom_left, bottom_right, top_right, top_left], dtype=np.float32)
@@ -93,17 +93,33 @@ def b_thresh(img, thresh=(140,255)):
     b_bin[(b_channel >= thresh[0]) & (b_channel <= thresh[1])] = 1
     return b_bin
 
+def select_yellow(image):
+    hsv = cv2.cvtColor(image, cv2.COLOR_RGB2HSV)
+    lower = np.array([20,60,60])
+    upper = np.array([38,174, 250])
+    mask = cv2.inRange(hsv, lower, upper)
+    mask[mask == 255] = 1
+    return mask
+
+def select_white(image):
+    lower = np.array([202,202,202])
+    upper = np.array([255,255,255])
+    mask = cv2.inRange(image, lower, upper)
+    mask[mask == 255] = 1
+    return mask
+
 def threshold_image(img, visualise=False):
     # Process image based on gradient thresholds for edges
     sobel_bin = sobel_thresh(img)
-    # Process image based on intensity thresholds for white lines
-    l_bin = l_thresh(img, sobel_bin)
+    img_sobel = np.copy(img)
+    img_sobel[sobel_bin == 0] = [0,0,0]
     # Process image based on saturation thresholds for yellow lines
-    b_bin = b_thresh(img)
-
+    yellow_bin = select_yellow(img)
+    # Process image based on intensity thresholds for white lines
+    white_bin = select_white(img)
     # Combined thresholded binary
     img_bin = np.zeros_like(img[:,:,0])
-    img_bin[(b_bin==1) | (l_bin==1)] = 1
+    img_bin[(yellow_bin == 1) | (white_bin == 1) | (sobel_bin == 1)] = 1
 
     if visualise:
         # Note color_binary[:, :, 0] is all 0s, effectively an all black image.
@@ -114,12 +130,12 @@ def threshold_image(img, visualise=False):
         f.tight_layout()
         ax1.imshow(img)
         ax1.set_title('Image', fontsize=40)
-        ax2.imshow(sobel_bin, cmap='gray')
-        ax2.set_title('Sobel Image', fontsize=40)
-        ax3.imshow(l_bin, cmap='gray')
-        ax3.set_title('L Image', fontsize=40)
-        ax4.imshow(b_bin, cmap='gray')
-        ax4.set_title('B Image', fontsize=40)
+        ax2.imshow(white_bin, cmap='gray')
+        ax2.set_title('RGB Image', fontsize=40)
+        ax3.imshow(yellow_bin, cmap='gray')
+        ax3.set_title('HSV Image', fontsize=40)
+        ax4.imshow(sobel_bin, cmap='gray')
+        ax4.set_title('Sobel Image', fontsize=40)
         ax5.imshow(img_bin, cmap='gray')
         ax5.set_title('Binary Result', fontsize=40)
         plt.subplots_adjust(left=0., right=1, top=0.9, bottom=0.)
@@ -149,10 +165,10 @@ def view_road_top(img_bin, img=None, visualise=False):
 
     if visualise:
         img_vis = np.copy(img)
-        img_top_vis = np.copy(img_top)
+        img_top_vis = cv2.warpPerspective(img_vis, M, img_size, flags=cv2.INTER_LINEAR)
         # Plot original and projected image to check validity of transforrm
-        #cv2.polylines(img_vis, np.array([src_pts],dtype=np.int32),True,(255,0,0), 5)
-        #cv2.polylines(img_top_vis, np.array([dst_pts], dtype=np.int32),True,(0,0, 255), 5)
+        cv2.polylines(img_vis, np.array([src_pts],dtype=np.int32),True,(255,0,0), 5)
+        cv2.polylines(img_top_vis, np.array([dst_pts], dtype=np.int32),True,(0,0, 255), 5)
         f, (ax1, ax2) = plt.subplots(1, 2, figsize=(24, 9))
         f.tight_layout()
         ax1.imshow(img_vis)

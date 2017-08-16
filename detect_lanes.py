@@ -10,8 +10,8 @@ video_FPS = 25
 max_missed_frames = int(np.ceil(0.1*video_FPS))
 # Empirical minimum width of lanes in metre
 min_lane_width = 3.7/2
-# Minimum radius of curvature of U.S. highway lanes in metre
-min_lane_radius = 200
+# Minimum radius of curvature of lane in metre
+min_lane_radius = 500
 # Ratio between current and previous radius of curvature
 max_radius_ratio = 100
 # Weight of current fit to average fit to keep for current calculation
@@ -249,9 +249,9 @@ def check_lane_fit(lefty, leftx, righty, rightx):
         # Fit a second order polynomial to detected left line pixels
         left_fit = np.polyfit(lefty, leftx, left_line.fit_degree)
         # Check direction of curve
-        if left_fit[0]*left_line.current_fit[0] < 0:
+        '''if left_fit[0]*left_line.current_fit[0] < 0:
             if left_fit[0]*left_line.avg_fit[0] < 0:
-                left_fit = fit_gain*left_line.current_fit + (1-fit_gain)*left_fit
+                left_fit = fit_gain*left_line.current_fit + (1-fit_gain)*left_fit'''
         # Calculate left line radius
         left_rad, _ = find_curvature(lefty, leftx, 'left')
         # Check if radius is within deviation limits from previously calculated radius
@@ -264,15 +264,13 @@ def check_lane_fit(lefty, leftx, righty, rightx):
     # If minimum pixels of right line not detected in current image
     if rightx.size < min_pixels_line:
         right_line.detected = False
-        # Increment missed frames counter
-        right_line.n_missed_frames += 1
     else:
         # Fit a second order polynomial to detected right line pixels
         right_fit = np.polyfit(righty, rightx, right_line.fit_degree)
         # Check direction of curve
-        if right_fit[0] * right_line.current_fit[0] < 0:
+        '''if right_fit[0] * right_line.current_fit[0] < 0:
             if right_fit[0] * right_line.avg_fit[0] < 0:
-                right_fit = fit_gain*right_line.current_fit + (1-fit_gain)*right_fit
+                right_fit = fit_gain*right_line.current_fit + (1-fit_gain)*right_fit'''
         # Calculate right line radius
         _, right_rad = find_curvature(righty, rightx, 'right')
         # Check if radius is within deviation limits from previously calculated radius

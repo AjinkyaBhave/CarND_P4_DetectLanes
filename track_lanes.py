@@ -18,7 +18,7 @@ img_file      = 'curved_lines1.jpg'
 video_img_dir =  img_dir+'test_video/'
 
 # Number of past camera images to store for smoothing lane markings
-n_prev_frames = int(np.ceil(0.4*video_FPS))
+n_prev_frames = 1#int(np.ceil(0.4*video_FPS))
 # Contains history of last n_prev_frames camera images
 img_queue = deque(maxlen=n_prev_frames)
 
@@ -67,28 +67,13 @@ def draw_lanes(img_undist, img_top, left_fit, right_fit, visualise=False):
     return img_out
 
 # Pipeline to process camera image to isolate lane markings
-def image_pipeline(img_max, img, visualise=True):
-    img_undist = undistort_image(img_max, mtx=mtx, dist=dist, visualise=False)
+def track_lanes(img, visualise=True):
+    img_undist = undistort_image(img, mtx=mtx, dist=dist, visualise=False)
     img_thresh = threshold_image(img_undist, visualise=visualise)
-    img_top = view_road_top(img_thresh, img_max, visualise=visualise)
+    img_top = view_road_top(img_thresh, img, visualise=visualise)
     left_fit, right_fit = fit_lane(img_top, visualise=visualise)
-    img_out = draw_lanes(img, img_top, left_fit, right_fit, visualise=visualise)
+    img_out = draw_lanes(img_undist, img_top, left_fit, right_fit, visualise=visualise)
     return img_out
-
-def track_lanes(img):
-    # Add newest camera frame from right end of queue
-    img_queue.append(img)
-    # If queue has enough images to begin processing
-    if len(img_queue) == n_prev_frames:
-        img_max = reduce(np.maximum, np.asarray(img_queue))
-        #plt.imshow(img_max)
-        #plt.show()
-        img_out = image_pipeline(img_max, img)
-        # Remove oldest camera frame from left end of queue
-        img_queue.popleft()
-        return img_out
-    else:
-        return img
 
 if __name__ == '__main__':
 
@@ -115,8 +100,8 @@ if __name__ == '__main__':
                 clip.save_frame(video_img_file, vt)
 
         # Read camera frames from disk
-        img_files = glob.glob(video_img_dir+'video*.jpg')
-        #img_files = glob.glob(img_dir + 'curved_lines*.jpg')
+        #img_files = glob.glob(video_img_dir+'video*.jpg')
+        img_files = glob.glob(img_dir + '*lines*.jpg')
         for img_file in img_files:
             img = mpimg.imread(img_file)
             track_lanes(img)
