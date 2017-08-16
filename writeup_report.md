@@ -66,12 +66,13 @@ The image below shows the application of the distortion correction to one of the
 
 #### 2. Describe how (and identify where in your code) you used color transforms, gradients or other methods to create a thresholded binary image.  Provide an example of a binary image result.
 
-I experimented with various combinations of color and gradient thresholds to come up with the most robust method of detecting yellow and white lines under different lighting conditions and videos. Initially, the s-channel from HSV was used for yellow lines with the V-channel for white lines. However, that was noisy for the challenge video images. I finally converged on the solution as:
-- B-channel from LAB space for robust detection of yellow lines
-- Sobel filter in the x-direction for line detection
-- L-channel from HSL space on Sobel gradient image and normalisation for intensity
+I experimented with various combinations of color and gradient thresholds to come up with the most robust method of detecting yellow and white lines under different lighting conditions and videos. Initially, the B-channel from LAB was used for yellow lines with the L-channel  from HSV for white lines. However, that was noisy for the sections of road with changed lighting.
+After review from Udacity, I finally converged on the solution as:
+- RGB thresholds for robust detection of yellow lines (lines 96-102)
+- HSV thresholds for robust detection of white lines (lines 104-109)
+- Sobel filter in the x-direction for line detection (lines 23-40)
 
-The low-level pipeline is implemented in process_image.py in threshold_image() (lines 98-106). The associated functions are also implemented in the same file. Here's an example of my output for this step. (note: this is from the first video frame of *project_video.mp4*)
+The low-level pipeline is implemented in process_image.py in *threshold_image()* (lines 111-144). The associated functions are also implemented in the same file. Here's an example of my output for this step. (note: this is from the first video frame of *project_video.mp4*)
 
 ![Binary Output][image3]
 
@@ -81,12 +82,10 @@ The code for my perspective transform is implemented in *process_image.py* in th
 
 | Source        | Destination   | 
 |:-------------:|:-------------:| 
-| 570, 470      | 350, 1        | 
-| 720, 470      | 875, 1        |
-| 1130, 670     | 900, 720      |
-| 200, 670      | 320, 720      |
-
-I chose to crop the bottom part of the image (y-coordinate of 670) to remove any specular reflection artifacts that appear on the car bonnet. This works well in practice and helps the lane fitting in the rest of the pipeline.
+| 565, 470      | 320, 1        | 
+| 720, 470      | 900, 1        |
+| 1120, 720     | 900, 720      |
+| 200, 720      | 320, 720      |
 
 I verified that my perspective transform was working as expected by drawing the `src` and `dst` points onto the *straight_lines2* test image and its warped counterpart to verify that the lines appear parallel in the warped image.
 
@@ -116,9 +115,9 @@ Notice how the algorithm rejects the bright patch of road at the top left of the
 
 #### 5. Describe how (and identify where in your code) you calculated the radius of curvature of the lane and the position of the vehicle with respect to center.
 
-I used the code given in the tutorial to calculate the radius of curvature in function *find_curvature()* (lines 300-316) I modified the code to return a left or right radius, based on the *lane_line* input.
+I used the code given in the tutorial to calculate the radius of curvature in function *find_curvature()* (lines 298-314) I modified the code to return a left or right radius, based on the *lane_line* input.
 
-I calculate the position of vehicle in the lane in *find_offset()* (lines 318-328). I assume that the camera is placed so that the image midpoint is the vehicle centre and calculate the lane centre based on the left and right lane coordinates. The difference between the lane centre and image midpoint is the vehicle offset.
+I calculate the position of vehicle in the lane in *find_offset()* (lines 316-326). I assume that the camera is placed so that the image midpoint is the vehicle centre and calculate the lane centre based on the left and right lane coordinates. The difference between the lane centre and image midpoint is the vehicle offset.
 
 #### 6. Provide an example image of your result plotted back down onto the road such that the lane area is identified clearly.
 
@@ -133,9 +132,9 @@ I implemented this in *track_lanes.py* in the function *draw_lanes()* (lines 33-
 #### 1. Provide a link to your final video output.  Your pipeline should perform reasonably well on the entire project video (wobbly lines are ok but no catastrophic failures that would cause the car to drive off the road!).
 The output videos are named appropriately and placed in the *./output_video* folder.
 
-Here is a [link to my project video result](./output_video/project_video_output.mp4)
+Here is a [link to my original project video result](./output_video/project_video_output.mp4)
 
-Here is a [link to my challenge video result](./output_video/challenge_video_output.mp4)
+Here is a [link to my resubmitted project video result](./output_video/project_video_output_rev.mp4)
 
 ---
 
@@ -149,14 +148,10 @@ The performance of the approach on the project and challenge videos shows that t
 
 2. I rejected lines if a minimum number of pixels were not detected (lines 245,265). This helped avoid the algorithm from fitting a curve to small, isolated clusters of pixels, leading to very wrong curvatures.
 
-3. I check the coefficients of the line fit (lines 251-254) to see if the direction of the curve has suddenly changed (coeff[0] changes sign compared to previous value). This leads to sudden jumps in the curvature and the plotted lanes. To allow for small numerical discontinuities while fitting straight lines, I check the coefficient with the average coefficient calculated over the past *n_fit* frames. If the current coefficient sign is different from the average, I use the previous coefficient for the line direction.
+3. I check the calculated radius of curvature (lines 261,282) to make sure it is above a minimum threshold, based on empirical observation and using the U.S. highway specifications as the upper limit. This helps to reject lines that are changing too rapidly to be valid detections.
 
-4. I check the calculated radius of curvature (lines 261,282) to make sure it is above a minimum threshold, based on empirical observation and using the U.S. highway specifications as the upper limit. This helps to reject lines that are changing too rapidly to be valid detections.
+4. I check that the difference in radius magnitude between current and previous calculations is within a reasonable deviation (lines 258, 279). This prevents sudden changes in lane curvature and allows better outlier rejection.
 
-5. I check that the difference in radius magnitude between current and previous calculations is within a reasonable deviation (lines 258, 279). This prevents sudden changes in lane curvature and allows better outlier rejection.
+5. I check that the calculated lane width is within reasonable limits (lines 286-296), otherwise I use the previous detected lines. This prevents the lane from suddenly becoming too small or too large, especially when lines are lost or there are shadows on the road.
 
-6. I check that the calculated lane width is within reasonable limits (lines 286-296), otherwise I use the previous detected lines. This prevents the lane from suddenly becoming too small or too large, especially when lines are lost or there are shadows on the road.
-
-In spite of all these checks, I was not able to successfully navigate the harder challenge video. After analysing the result, I believe the extreme lighting conditions, extensive shadows, and sudden changes in curvature confuse the simple tracking scheme that I have implemented. A better approach would be to have a model of the lane that is tracked using a Kalman or particle filter. The same image processing pipeline would work but the filter would help to robustly estimate where the lines would be since there would be an underlying curvature and lane width model to help it reject impossible values. I do not believe my current approach can successfully complete the final video since there are too many corner cases to hard code. Unfortunately, I ran out of time to implement a more principled approach using lane model and associated estimation algorithm.
- 
-Here is a [link to my harder challenge video result](./output_video/harder_challenge_video_output.mp4)
+In spite of all these checks, I was not able to successfully navigate the challenge videos. After analysing the result, I believe the different lighting conditions, extensive shadows, and sudden changes in curvature confuse the simple tracking scheme that I have implemented. A better approach would be to have a model of the lane that is tracked using a Kalman or particle filter. The same image processing pipeline would work but the filter would help to robustly estimate where the lines would be since there would be an underlying curvature and lane width model to help it reject impossible values. I do not believe my current approach can successfully complete the final video since there are too many corner cases to hard code. Unfortunately, I ran out of time to implement a more principled approach using lane model and associated estimation algorithm.
